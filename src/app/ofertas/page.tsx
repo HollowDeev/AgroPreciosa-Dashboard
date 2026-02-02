@@ -7,7 +7,7 @@ async function getOffersData() {
   
   const { data: storeConfig } = await supabase
     .from('store_config')
-    .select('store_name')
+    .select('*')
     .single()
 
   const { data: offers } = await supabase
@@ -56,6 +56,7 @@ export default async function OffersPage() {
         products={data.products}
         combos={data.combos}
         offerHistory={data.offerHistory}
+        storeConfig={data.storeConfig}
       />
     </DashboardLayout>
   )

@@ -12,6 +12,7 @@ import {
   Package,
   Boxes,
   Tag,
+  FolderOpen,
   ShoppingCart,
   ClipboardList,
   Users,
@@ -26,6 +27,7 @@ import {
 const navigation = [
   { name: 'Dashboard', href: '/', icon: LayoutDashboard },
   { name: 'Produtos', href: '/produtos', icon: Package },
+  { name: 'Categorias', href: '/categorias', icon: FolderOpen },
   { name: 'Estoque', href: '/estoque', icon: Boxes },
   { name: 'Combos', href: '/combos', icon: ShoppingCart },
   { name: 'Ofertas', href: '/ofertas', icon: Tag },

@@ -44,10 +44,12 @@ import {
   Crown,
   Calendar,
   Trash2,
+  Star,
+  AlertTriangle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Offer, OfferHistory, Product, Combo } from '@/types/database'
+import { Offer, OfferHistory, Product, Combo, StoreConfig } from '@/types/database'
 
 const offerSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -59,6 +61,7 @@ const offerSchema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   is_active: z.boolean(),
+  is_featured: z.boolean(),
 })
 
 type OfferForm = {
@@ -71,6 +74,7 @@ type OfferForm = {
   start_date?: string
   end_date?: string
   is_active: boolean
+  is_featured: boolean
 }
 
 interface OffersClientProps {
@@ -78,15 +82,20 @@ interface OffersClientProps {
   products: Pick<Product, 'id' | 'name' | 'sale_price'>[]
   combos: Pick<Combo, 'id' | 'name' | 'combo_price'>[]
   offerHistory: OfferHistory[]
+  storeConfig: StoreConfig | null
 }
 
-export function OffersClient({ initialOffers, products, combos, offerHistory }: OffersClientProps) {
+export function OffersClient({ initialOffers, products, combos, offerHistory, storeConfig }: OffersClientProps) {
   const router = useRouter()
   const supabase = createClient()
   const [offers, setOffers] = useState(initialOffers)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [selectedTarget, setSelectedTarget] = useState<{ type: 'product' | 'combo'; id: string } | null>(null)
+  const [isStatusModalOpen, setIsStatusModalOpen] = useState(false)
+  const [pendingStatusChange, setPendingStatusChange] = useState<Offer | null>(null)
+
+  const isClubEnabled = storeConfig?.enable_club_discount || false
 
   const {
     register,
@@ -104,6 +113,7 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
       discount_type: 'percentage',
       discount_value: 0,
       is_active: true,
+      is_featured: false,
     },
   })
 
@@ -168,6 +178,7 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
         start_date: data.start_date || null,
         end_date: data.end_date || null,
         is_active: data.is_active,
+        is_featured: data.is_featured,
       }
 
       const { data: newOffer, error } = await supabase
@@ -193,21 +204,53 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
     }
   }
 
-  const toggleOfferStatus = async (offer: Offer) => {
+  // Função para iniciar mudança de status (abre modal de confirmação)
+  const initiateStatusChange = (offer: Offer) => {
+    setPendingStatusChange(offer)
+    setIsStatusModalOpen(true)
+  }
+
+  // Confirma a mudança de status
+  const confirmStatusChange = async () => {
+    if (!pendingStatusChange) return
+
     try {
       const { error } = await supabase
         .from('offers')
-        .update({ is_active: !offer.is_active })
+        .update({ is_active: !pendingStatusChange.is_active })
+        .eq('id', pendingStatusChange.id)
+
+      if (error) throw error
+
+      setOffers(offers.map(o => 
+        o.id === pendingStatusChange.id ? { ...o, is_active: !o.is_active } : o
+      ))
+      toast.success('Status atualizado!')
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao atualizar status')
+    } finally {
+      setIsStatusModalOpen(false)
+      setPendingStatusChange(null)
+    }
+  }
+
+  // Toggle de destaque (rápido, sem confirmação)
+  const toggleFeatured = async (offer: Offer) => {
+    try {
+      const newFeatured = !(offer as any).is_featured
+      const { error } = await supabase
+        .from('offers')
+        .update({ is_featured: newFeatured })
         .eq('id', offer.id)
 
       if (error) throw error
 
       setOffers(offers.map(o => 
-        o.id === offer.id ? { ...o, is_active: !o.is_active } : o
+        o.id === offer.id ? { ...o, is_featured: newFeatured } : o
       ))
-      toast.success('Status atualizado!')
+      toast.success(newFeatured ? 'Oferta destacada!' : 'Destaque removido!')
     } catch (error: any) {
-      toast.error(error.message || 'Erro ao atualizar status')
+      toast.error(error.message || 'Erro ao atualizar destaque')
     }
   }
 
@@ -300,6 +343,7 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
               <TableHead className="text-right">Original</TableHead>
               <TableHead className="text-right">Desconto</TableHead>
               <TableHead className="text-right">Final</TableHead>
+              <TableHead className="text-center">Destaque</TableHead>
               <TableHead className="text-center">Status</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
@@ -307,7 +351,7 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
           <TableBody>
             {offers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
+                <TableCell colSpan={9} className="text-center py-8">
                   <Tag className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
                   <p className="text-muted-foreground">Nenhuma oferta cadastrada</p>
                 </TableCell>
@@ -316,13 +360,18 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
               offers.map((offer) => (
                 <TableRow key={offer.id}>
                   <TableCell>
-                    <div>
-                      <p className="font-medium">{offer.name}</p>
-                      {offer.end_date && (
-                        <p className="text-xs text-muted-foreground">
-                          Até {formatDate(offer.end_date)}
-                        </p>
+                    <div className="flex items-center gap-2">
+                      {(offer as any).is_featured && (
+                        <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
                       )}
+                      <div>
+                        <p className="font-medium">{offer.name}</p>
+                        {offer.end_date && (
+                          <p className="text-xs text-muted-foreground">
+                            Até {formatDate(offer.end_date)}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -351,9 +400,19 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
                     {formatCurrency(offer.final_price)}
                   </TableCell>
                   <TableCell className="text-center">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => toggleFeatured(offer)}
+                      title={(offer as any).is_featured ? 'Remover destaque' : 'Destacar oferta'}
+                    >
+                      <Star className={`h-4 w-4 ${(offer as any).is_featured ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground'}`} />
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-center">
                     <Switch
                       checked={offer.is_active}
-                      onCheckedChange={() => toggleOfferStatus(offer)}
+                      onCheckedChange={() => initiateStatusChange(offer)}
                     />
                   </TableCell>
                   <TableCell>
@@ -372,7 +431,41 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
         </Table>
       </div>
 
-      {/* Dialog */}
+      {/* Modal de Confirmação de Status */}
+      <Dialog open={isStatusModalOpen} onOpenChange={setIsStatusModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Atenção - Alteração de Status
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              A alteração do status da promoção pode levar de <strong>2 a 7 minutos</strong> para ser refletida no site.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Durante este período, podem ocorrer vendas com a oferta {pendingStatusChange?.is_active ? 'ainda aplicada' : 'já aplicada'}.
+            </p>
+            <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+              <input type="checkbox" id="confirm-aware" className="rounded" />
+              <label htmlFor="confirm-aware" className="text-sm">
+                Estou ciente e desejo prosseguir
+              </label>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsStatusModalOpen(false)}>
+                Cancelar
+              </Button>
+              <Button onClick={confirmStatusChange}>
+                {pendingStatusChange?.is_active ? 'Desativar Oferta' : 'Ativar Oferta'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Nova Oferta */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
@@ -407,14 +500,21 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
                         Oferta Sazonal
                       </div>
                     </SelectItem>
-                    <SelectItem value="clube_desconto">
-                      <div className="flex items-center gap-2">
-                        <Crown className="h-4 w-4" />
-                        Clube de Desconto
-                      </div>
-                    </SelectItem>
+                    {isClubEnabled && (
+                      <SelectItem value="clube_desconto">
+                        <div className="flex items-center gap-2">
+                          <Crown className="h-4 w-4" />
+                          Clube de Desconto
+                        </div>
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
+                {!isClubEnabled && (
+                  <p className="text-xs text-muted-foreground">
+                    Habilite o Clube de Desconto nas Configurações para criar ofertas exclusivas
+                  </p>
+                )}
               </div>
             </div>
 
@@ -545,13 +645,26 @@ export function OffersClient({ initialOffers, products, combos, offerHistory }: 
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Switch
-                id="is_active"
-                checked={watch('is_active')}
-                onCheckedChange={(v) => setValue('is_active', v)}
-              />
-              <Label htmlFor="is_active">Oferta Ativa</Label>
+            <div className="flex flex-wrap gap-6">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="is_active"
+                  checked={watch('is_active')}
+                  onCheckedChange={(v) => setValue('is_active', v)}
+                />
+                <Label htmlFor="is_active">Oferta Ativa</Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="is_featured"
+                  checked={watch('is_featured')}
+                  onCheckedChange={(v) => setValue('is_featured', v)}
+                />
+                <Label htmlFor="is_featured" className="flex items-center gap-1">
+                  <Star className="h-4 w-4" />
+                  Oferta em Destaque
+                </Label>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2">

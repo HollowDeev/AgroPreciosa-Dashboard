@@ -10,10 +10,34 @@ async function getProductsData() {
     .select('store_name')
     .single()
 
+  // Buscar produtos com categoria e imagem principal
   const { data: products } = await supabase
-    .from('vw_products_with_margin')
-    .select('*')
+    .from('products')
+    .select(`
+      *,
+      category:categories(id, name, slug),
+      images:product_images(id, image_url, is_primary, display_order)
+    `)
     .order('name')
+
+  // Processar produtos para adicionar imagem principal e calcular margem
+  const processedProducts = (products || []).map(product => {
+    const primaryImage = product.images?.find((img: any) => img.is_primary)?.image_url 
+      || product.images?.[0]?.image_url 
+      || null
+    
+    const marginValue = product.sale_price - product.cost_price
+    const marginPercent = product.cost_price > 0 
+      ? ((marginValue / product.cost_price) * 100) 
+      : 0
+
+    return {
+      ...product,
+      primary_image: primaryImage,
+      profit_margin_value: marginValue,
+      profit_margin_percent: marginPercent,
+    }
+  })
 
   const { data: categories } = await supabase
     .from('categories')
@@ -23,7 +47,7 @@ async function getProductsData() {
 
   return {
     storeConfig,
-    products: products || [],
+    products: processedProducts,
     categories: categories || [],
   }
 }

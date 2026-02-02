@@ -1,12 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
+import { DashboardLayout } from '@/components/layout'
 import { CombosClient } from './combos-client'
 
 export default async function CombosPage() {
   const supabase = await createClient()
-
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
 
   // Buscar configuração da loja
   const { data: storeConfig } = await supabase
@@ -36,10 +33,12 @@ export default async function CombosPage() {
     .order('name')
 
   return (
-    <CombosClient
-      storeConfig={storeConfig}
-      initialCombos={combos || []}
-      products={products || []}
-    />
+    <DashboardLayout storeName={storeConfig?.store_name}>
+      <CombosClient
+        storeConfig={storeConfig}
+        initialCombos={combos || []}
+        products={products || []}
+      />
+    </DashboardLayout>
   )
 }

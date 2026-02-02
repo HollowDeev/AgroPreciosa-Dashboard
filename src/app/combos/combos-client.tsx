@@ -42,9 +42,10 @@ import {
   ShoppingBag,
   Edit,
   X,
+  Crown,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, generateSlug } from '@/lib/utils'
 import { Combo, ComboItem, Product, StoreConfig } from '@/types/database'
 
 const comboSchema = z.object({
@@ -52,6 +53,7 @@ const comboSchema = z.object({
   description: z.string().optional(),
   combo_price: z.number().min(0.01, 'Preço deve ser maior que 0'),
   is_active: z.boolean(),
+  is_club_only: z.boolean(),
 })
 
 type ComboForm = {
@@ -59,6 +61,7 @@ type ComboForm = {
   description?: string
   combo_price: number
   is_active: boolean
+  is_club_only: boolean
 }
 
 interface ComboWithItems extends Combo {
@@ -87,6 +90,8 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
   const [editingCombo, setEditingCombo] = useState<ComboWithItems | null>(null)
   const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([])
 
+  const isClubEnabled = storeConfig?.enable_club_discount || false
+
   const {
     register,
     handleSubmit,
@@ -100,6 +105,7 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
       description: '',
       combo_price: 0,
       is_active: true,
+      is_club_only: false,
     },
   })
 
@@ -117,6 +123,7 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
       description: '',
       combo_price: 0,
       is_active: true,
+      is_club_only: false,
     })
     setIsDialogOpen(true)
   }
@@ -134,6 +141,7 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
       description: combo.description || '',
       combo_price: combo.combo_price,
       is_active: combo.is_active,
+      is_club_only: (combo as any).is_club_only || false,
     })
     setIsDialogOpen(true)
   }
@@ -181,13 +189,17 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
     try {
       if (editingCombo) {
         // Atualizar combo
+        const slug = generateSlug(data.name)
         const { error: updateError } = await supabase
           .from('combos')
           .update({
             name: data.name,
-            description: data.description,
+            slug,
+            description: data.description || null,
+            regular_price: totalProductsPrice,
             combo_price: data.combo_price,
             is_active: data.is_active,
+            is_club_only: data.is_club_only,
           })
           .eq('id', editingCombo.id)
 
@@ -213,13 +225,17 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
         toast.success('Combo atualizado com sucesso!')
       } else {
         // Criar novo combo
+        const slug = generateSlug(data.name)
         const { data: newCombo, error: comboError } = await supabase
           .from('combos')
           .insert({
             name: data.name,
-            description: data.description,
+            slug,
+            description: data.description || null,
+            regular_price: totalProductsPrice,
             combo_price: data.combo_price,
             is_active: data.is_active,
+            is_club_only: data.is_club_only,
           })
           .select()
           .single()
@@ -376,11 +392,22 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
                 return (
                   <TableRow key={combo.id}>
                     <TableCell>
-                      <div>
-                        <p className="font-medium">{combo.name}</p>
-                        {combo.description && (
-                          <p className="text-xs text-muted-foreground">{combo.description}</p>
+                      <div className="flex items-center gap-2">
+                        {(combo as any).is_club_only && (
+                          <Crown className="h-4 w-4 text-purple-500" />
                         )}
+                        <div>
+                          <p className="font-medium">{combo.name}</p>
+                          {combo.description && (
+                            <p className="text-xs text-muted-foreground">{combo.description}</p>
+                          )}
+                          {(combo as any).is_club_only && (
+                            <Badge variant="secondary" className="text-xs mt-1">
+                              <Crown className="h-3 w-3 mr-1" />
+                              Exclusivo Clube
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -555,6 +582,20 @@ export function CombosClient({ storeConfig, initialCombos, products }: CombosCli
               />
               <Label htmlFor="is_active">Combo Ativo</Label>
             </div>
+
+            {isClubEnabled && (
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="is_club_only"
+                  checked={watch('is_club_only')}
+                  onCheckedChange={(v) => setValue('is_club_only', v)}
+                />
+                <Label htmlFor="is_club_only" className="flex items-center gap-2">
+                  <Crown className="h-4 w-4 text-amber-500" />
+                  Exclusivo para Membros do Clube
+                </Label>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <Button

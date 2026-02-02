@@ -55,14 +55,9 @@ const storeConfigSchema = z.object({
   store_phone: z.string().default(''),
   store_email: z.string().email('Email inválido').or(z.literal('')).default(''),
   store_address: z.string().default(''),
-  store_logo_url: z.string().default(''),
-  currency: z.string().default('BRL'),
-  timezone: z.string().default('America/Sao_Paulo'),
-  default_whatsapp_message: z.string().default(''),
-  order_confirmation_message: z.string().default(''),
-  low_stock_threshold: z.number().min(0).default(5),
-  enable_club_discount: z.boolean().default(false),
-  club_discount_percentage: z.number().min(0).max(100).default(10),
+  store_logo: z.string().default(''),
+  whatsapp_message_preparing: z.string().default(''),
+  whatsapp_message_ready: z.string().default(''),
 })
 
 const userSchema = z.object({
@@ -94,14 +89,11 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
       store_phone: storeConfig?.store_phone || '',
       store_email: storeConfig?.store_email || '',
       store_address: storeConfig?.store_address || '',
-      store_logo_url: storeConfig?.store_logo || '',
-      currency: storeConfig?.currency || 'BRL',
-      timezone: storeConfig?.timezone || 'America/Sao_Paulo',
-      default_whatsapp_message: storeConfig?.whatsapp_message_preparing || '',
-      order_confirmation_message: storeConfig?.whatsapp_message_ready || '',
+      store_logo: storeConfig?.store_logo || '',
+      whatsapp_message_preparing: storeConfig?.whatsapp_message_preparing || '',
+      whatsapp_message_ready: storeConfig?.whatsapp_message_ready || '',
       low_stock_threshold: storeConfig?.low_stock_threshold || 5,
       enable_club_discount: storeConfig?.enable_club_discount || false,
-      club_discount_percentage: storeConfig?.club_discount_percentage || 10,
     },
   })
 
@@ -111,6 +103,33 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
       role: 'operator',
     },
   })
+
+  // Função para lidar com toggle do clube
+  const handleClubToggle = async (enabled: boolean) => {
+    storeForm.setValue('enable_club_discount', enabled)
+    
+    // Se estiver desabilitando, desativar todas as ofertas do clube
+    if (!enabled) {
+      try {
+        const { error } = await supabase
+          .from('offers')
+          .update({ is_active: false })
+          .eq('offer_type', 'clube_desconto')
+        
+        if (error) throw error
+        
+        // Também desativar combos exclusivos do clube
+        await supabase
+          .from('combos')
+          .update({ is_active: false })
+          .eq('is_club_only', true)
+        
+        toast.info('Ofertas e combos do clube foram desativados')
+      } catch (error: any) {
+        console.error('Erro ao desativar ofertas do clube:', error)
+      }
+    }
+  }
 
   const onSubmitStoreConfig = async (data: StoreConfigForm) => {
     setIsLoading(true)
@@ -287,7 +306,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
                   <div className="space-y-2">
                     <Label>URL do Logo</Label>
                     <Input
-                      {...storeForm.register('store_logo_url')}
+                      {...storeForm.register('store_logo')}
                       placeholder="https://..."
                     />
                   </div>
@@ -325,21 +344,14 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
                       <Switch
                         id="enable_club"
                         checked={storeForm.watch('enable_club_discount')}
-                        onCheckedChange={(v) => storeForm.setValue('enable_club_discount', v)}
+                        onCheckedChange={(v) => handleClubToggle(v)}
                       />
                       <Label htmlFor="enable_club">Habilitar Clube de Desconto</Label>
                     </div>
-                    {storeForm.watch('enable_club_discount') && (
-                      <div className="space-y-2">
-                        <Label>Desconto do Clube (%)</Label>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          {...storeForm.register('club_discount_percentage')}
-                        />
-                      </div>
-                    )}
+                    <p className="text-sm text-muted-foreground">
+                      Quando ativo, permite criar ofertas e combos exclusivos para membros do clube.
+                      As ofertas do clube serão gerenciadas na seção de Ofertas.
+                    </p>
                   </div>
                 </div>
 
@@ -378,26 +390,26 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Mensagem Padrão do WhatsApp</Label>
+                  <Label>Mensagem - Pedido em Preparação</Label>
                   <Textarea
-                    {...storeForm.register('default_whatsapp_message')}
-                    placeholder="Olá! Vi seu produto {produto} e gostaria de mais informações."
+                    {...storeForm.register('whatsapp_message_preparing')}
+                    placeholder="Olá {nome}! Seu pedido #{numero} está sendo preparado!"
                     rows={3}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Use {'{produto}'} para incluir o nome do produto automaticamente
+                    Use {'{nome}'} e {'{numero}'} para personalizar
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Mensagem de Confirmação de Pedido</Label>
+                  <Label>Mensagem - Pedido Pronto</Label>
                   <Textarea
-                    {...storeForm.register('order_confirmation_message')}
-                    placeholder="Olá {cliente}! Seu pedido #{numero} foi confirmado. Total: {total}"
+                    {...storeForm.register('whatsapp_message_ready')}
+                    placeholder="Olá {nome}! Seu pedido #{numero} está pronto para retirada!"
                     rows={3}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Use {'{cliente}'}, {'{numero}'} e {'{total}'} para personalizar
+                    Use {'{nome}'} e {'{numero}'} para personalizar
                   </p>
                 </div>
 

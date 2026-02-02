@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -32,6 +32,7 @@ import { Category, Product, UNIT_LABELS } from '@/types/database'
 const productSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
   description: z.string().optional(),
+  brand: z.string().optional(),
   barcode: z.string().optional(),
   ean_code: z.string().optional(),
   sku: z.string().optional(),
@@ -49,6 +50,7 @@ const productSchema = z.object({
 type ProductForm = {
   name: string
   description?: string
+  brand?: string
   barcode?: string
   ean_code?: string
   sku?: string
@@ -95,6 +97,7 @@ export function ProductFormDialog({
     defaultValues: {
       name: product?.name || '',
       description: product?.description || '',
+      brand: (product as any)?.brand || '',
       barcode: product?.barcode || '',
       ean_code: product?.ean_code || '',
       sku: product?.sku || '',
@@ -113,6 +116,31 @@ export function ProductFormDialog({
   const costPrice = watch('cost_price')
   const salePrice = watch('sale_price')
   const margin = calculateMargin(costPrice, salePrice)
+
+  // Resetar formulário quando o produto mudar (ao abrir modal de edição)
+  useEffect(() => {
+    if (open) {
+      reset({
+        name: product?.name || '',
+        description: product?.description || '',
+        brand: (product as any)?.brand || '',
+        barcode: product?.barcode || '',
+        ean_code: product?.ean_code || '',
+        sku: product?.sku || '',
+        category_id: product?.category_id || '',
+        cost_price: product?.cost_price || 0,
+        sale_price: product?.sale_price || 0,
+        stock_quantity: product?.stock_quantity || 0,
+        min_stock_alert: product?.min_stock_alert || 5,
+        weight: product?.weight || undefined,
+        unit: product?.unit || 'un',
+        is_active: product?.is_active ?? true,
+        is_featured: product?.is_featured ?? false,
+      })
+      setImageFile(null)
+      setImagePreview(null)
+    }
+  }, [open, product, reset])
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -162,9 +190,22 @@ export function ProductFormDialog({
       }
 
       const productData = {
-        ...data,
+        name: data.name,
         slug,
+        description: data.description || null,
+        brand: data.brand || null,
+        barcode: data.barcode || null,
+        ean_code: data.ean_code || null,
+        sku: data.sku || null,
         category_id: data.category_id || null,
+        cost_price: isNaN(data.cost_price) ? 0 : data.cost_price,
+        sale_price: isNaN(data.sale_price) ? 0 : data.sale_price,
+        stock_quantity: isNaN(data.stock_quantity) ? 0 : data.stock_quantity,
+        min_stock_alert: isNaN(data.min_stock_alert) ? 5 : data.min_stock_alert,
+        weight: data.weight && !isNaN(data.weight) ? data.weight : null,
+        unit: data.unit,
+        is_active: data.is_active,
+        is_featured: data.is_featured,
       }
 
       if (product) {
@@ -332,6 +373,16 @@ export function ProductFormDialog({
             </div>
           </div>
 
+          {/* Marca */}
+          <div className="space-y-2">
+            <Label htmlFor="brand">Marca</Label>
+            <Input
+              id="brand"
+              {...register('brand')}
+              placeholder="Ex: Purina, Royal Canin, etc."
+            />
+          </div>
+
           {/* Descrição */}
           <div className="space-y-2">
             <Label htmlFor="description">Descrição</Label>
@@ -379,7 +430,7 @@ export function ProductFormDialog({
                 id="cost_price"
                 type="number"
                 step="0.01"
-                {...register('cost_price')}
+                {...register('cost_price', { valueAsNumber: true })}
                 placeholder="0,00"
               />
               {errors.cost_price && (
@@ -392,7 +443,7 @@ export function ProductFormDialog({
                 id="sale_price"
                 type="number"
                 step="0.01"
-                {...register('sale_price')}
+                {...register('sale_price', { valueAsNumber: true })}
                 placeholder="0,00"
               />
               {errors.sale_price && (
@@ -420,7 +471,7 @@ export function ProductFormDialog({
               <Input
                 id="stock_quantity"
                 type="number"
-                {...register('stock_quantity')}
+                {...register('stock_quantity', { valueAsNumber: true })}
                 placeholder="0"
               />
             </div>
@@ -429,7 +480,7 @@ export function ProductFormDialog({
               <Input
                 id="min_stock_alert"
                 type="number"
-                {...register('min_stock_alert')}
+                {...register('min_stock_alert', { valueAsNumber: true })}
                 placeholder="5"
               />
             </div>
@@ -439,7 +490,7 @@ export function ProductFormDialog({
                 id="weight"
                 type="number"
                 step="0.001"
-                {...register('weight')}
+                {...register('weight', { valueAsNumber: true })}
                 placeholder="0,000"
               />
             </div>

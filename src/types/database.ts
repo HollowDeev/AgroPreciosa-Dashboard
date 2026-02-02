@@ -41,6 +41,7 @@ export interface Category {
   slug: string
   description: string | null
   image: string | null
+  icon: string | null
   parent_id: string | null
   is_active: boolean
   display_order: number
@@ -53,6 +54,7 @@ export interface Product {
   name: string
   slug: string
   description: string | null
+  brand: string | null
   barcode: string | null
   ean_code: string | null
   sku: string | null

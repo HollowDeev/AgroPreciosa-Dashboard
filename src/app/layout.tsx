@@ -10,6 +10,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Dashboard - Gerenciamento de Loja",
   description: "Painel administrativo para gerenciamento de loja online",
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({

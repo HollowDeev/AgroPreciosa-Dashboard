@@ -83,6 +83,8 @@ const storeConfigSchema = z.object({
 
   whatsapp_message_preparing: z.string().default(''),
   whatsapp_message_ready: z.string().default(''),
+  low_stock_threshold: z.number().min(0).default(5),
+  enable_club_discount: z.boolean().default(false),
 })
 
 const userSchema = z.object({

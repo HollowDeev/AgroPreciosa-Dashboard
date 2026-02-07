@@ -14,6 +14,7 @@ export interface StoreConfig {
   whatsapp_message_ready: string
   delivery_fee: number
   min_order_value: number
+  free_shipping_min_value: number | null
   currency: string
   timezone: string
   low_stock_threshold: number

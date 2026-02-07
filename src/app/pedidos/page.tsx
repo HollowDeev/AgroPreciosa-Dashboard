@@ -14,13 +14,13 @@ async function getOrdersData() {
     .from('orders')
     .select(`
       *,
-      customers (
+      customer:customers (
         id,
         name,
         phone,
         email
       ),
-      order_items (
+      items:order_items (
         id,
         product_name,
         quantity,

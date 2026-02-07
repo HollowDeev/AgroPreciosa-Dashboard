@@ -45,17 +45,42 @@ import {
   Trash2,
   Save,
   Shield,
+  Truck,
+  Pencil,
+  MapPin,
+  Calendar,
+  Percent,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils'
 import { StoreConfig, User } from '@/types/database'
+
+interface DeliveryNeighborhood {
+  id: string
+  name: string
+  fee: number
+  is_active: boolean
+  display_order: number
+}
+
+interface DeliveryPromotion {
+  id: string
+  name: string
+  description: string | null
+  discount_type: 'percentage' | 'fixed'
+  discount_value: number
+  target_type: 'all' | 'specific'
+  start_date: string
+  end_date: string
+  is_active: boolean
+}
 
 const storeConfigSchema = z.object({
   store_name: z.string().min(1, 'Nome é obrigatório'),
   store_phone: z.string().default(''),
   store_email: z.string().email('Email inválido').or(z.literal('')).default(''),
   store_address: z.string().default(''),
-  store_logo: z.string().default(''),
+
   whatsapp_message_preparing: z.string().default(''),
   whatsapp_message_ready: z.string().default(''),
 })
@@ -74,14 +99,46 @@ interface ConfiguracoesClientProps {
   storeConfig: StoreConfig | null
   users: User[]
   currentUserId: string
+  neighborhoods?: DeliveryNeighborhood[]
+  promotions?: DeliveryPromotion[]
 }
 
-export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentUserId }: ConfiguracoesClientProps) {
+export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentUserId, neighborhoods: initialNeighborhoods = [], promotions: initialPromotions = [] }: ConfiguracoesClientProps) {
   const router = useRouter()
   const supabase = createClient()
   const [users, setUsers] = useState(initialUsers)
   const [isLoading, setIsLoading] = useState(false)
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
+  
+  // Estados para taxa de entrega
+  const [neighborhoods, setNeighborhoods] = useState<DeliveryNeighborhood[]>(initialNeighborhoods)
+  const [promotions, setPromotions] = useState<DeliveryPromotion[]>(initialPromotions)
+  const [isNeighborhoodDialogOpen, setIsNeighborhoodDialogOpen] = useState(false)
+  const [isPromotionDialogOpen, setIsPromotionDialogOpen] = useState(false)
+  const [editingNeighborhood, setEditingNeighborhood] = useState<DeliveryNeighborhood | null>(null)
+  const [editingPromotion, setEditingPromotion] = useState<DeliveryPromotion | null>(null)
+  
+  // Form para bairro
+  const [neighborhoodName, setNeighborhoodName] = useState('')
+  const [neighborhoodFee, setNeighborhoodFee] = useState('')
+  
+  // Form para promoção
+  const [promotionName, setPromotionName] = useState('')
+  const [promotionDescription, setPromotionDescription] = useState('')
+  const [promotionDiscountType, setPromotionDiscountType] = useState<'percentage' | 'fixed'>('percentage')
+  const [promotionDiscountValue, setPromotionDiscountValue] = useState('')
+  const [promotionStartDate, setPromotionStartDate] = useState('')
+  const [promotionEndDate, setPromotionEndDate] = useState('')
+  const [promotionTargetType, setPromotionTargetType] = useState<'all' | 'specific'>('all')
+  const [selectedNeighborhoods, setSelectedNeighborhoods] = useState<string[]>([])
+
+  // Estados para frete grátis por valor mínimo
+  const [freeShippingEnabled, setFreeShippingEnabled] = useState(
+    (storeConfig as any)?.free_shipping_min_value != null && (storeConfig as any)?.free_shipping_min_value > 0
+  )
+  const [freeShippingMinValue, setFreeShippingMinValue] = useState(
+    (storeConfig as any)?.free_shipping_min_value?.toString() || ''
+  )
 
   const storeForm = useForm<StoreConfigForm>({
     defaultValues: {
@@ -89,7 +146,6 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
       store_phone: storeConfig?.store_phone || '',
       store_email: storeConfig?.store_email || '',
       store_address: storeConfig?.store_address || '',
-      store_logo: storeConfig?.store_logo || '',
       whatsapp_message_preparing: storeConfig?.whatsapp_message_preparing || '',
       whatsapp_message_ready: storeConfig?.whatsapp_message_ready || '',
       low_stock_threshold: storeConfig?.low_stock_threshold || 5,
@@ -237,6 +293,288 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
     }
   }
 
+  // ============ Funções de Bairros ============
+  const resetNeighborhoodForm = () => {
+    setNeighborhoodName('')
+    setNeighborhoodFee('')
+    setEditingNeighborhood(null)
+  }
+
+  const openNeighborhoodDialog = (neighborhood?: DeliveryNeighborhood) => {
+    if (neighborhood) {
+      setEditingNeighborhood(neighborhood)
+      setNeighborhoodName(neighborhood.name)
+      setNeighborhoodFee(neighborhood.fee.toString())
+    } else {
+      resetNeighborhoodForm()
+    }
+    setIsNeighborhoodDialogOpen(true)
+  }
+
+  const saveFreeShippingConfig = async () => {
+    setIsLoading(true)
+    try {
+      const value = freeShippingEnabled ? (parseFloat(freeShippingMinValue) || 0) : null
+      
+      const { error } = await supabase
+        .from('store_config')
+        .update({ free_shipping_min_value: value })
+        .eq('id', storeConfig?.id)
+
+      if (error) throw error
+
+      toast.success('Configuração de frete grátis atualizada!')
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar configuração')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const saveNeighborhood = async () => {
+    if (!neighborhoodName.trim()) {
+      toast.error('Nome do bairro é obrigatório')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const data = {
+        name: neighborhoodName.trim(),
+        fee: parseFloat(neighborhoodFee) || 0,
+        is_active: true,
+      }
+
+      if (editingNeighborhood) {
+        const { error } = await supabase
+          .from('delivery_neighborhoods')
+          .update(data)
+          .eq('id', editingNeighborhood.id)
+
+        if (error) throw error
+
+        setNeighborhoods(neighborhoods.map(n => 
+          n.id === editingNeighborhood.id ? { ...n, ...data } : n
+        ))
+        toast.success('Bairro atualizado!')
+      } else {
+        const { data: newNeighborhood, error } = await supabase
+          .from('delivery_neighborhoods')
+          .insert(data)
+          .select()
+          .single()
+
+        if (error) throw error
+
+        setNeighborhoods([...neighborhoods, newNeighborhood])
+        toast.success('Bairro cadastrado!')
+      }
+
+      setIsNeighborhoodDialogOpen(false)
+      resetNeighborhoodForm()
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar bairro')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const deleteNeighborhood = async (id: string) => {
+    if (!confirm('Deseja excluir este bairro?')) return
+
+    try {
+      const { error } = await supabase
+        .from('delivery_neighborhoods')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      setNeighborhoods(neighborhoods.filter(n => n.id !== id))
+      toast.success('Bairro excluído!')
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir bairro')
+    }
+  }
+
+  const toggleNeighborhoodActive = async (neighborhood: DeliveryNeighborhood) => {
+    try {
+      const { error } = await supabase
+        .from('delivery_neighborhoods')
+        .update({ is_active: !neighborhood.is_active })
+        .eq('id', neighborhood.id)
+
+      if (error) throw error
+
+      setNeighborhoods(neighborhoods.map(n => 
+        n.id === neighborhood.id ? { ...n, is_active: !n.is_active } : n
+      ))
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao atualizar bairro')
+    }
+  }
+
+  // ============ Funções de Promoções ============
+  const resetPromotionForm = () => {
+    setPromotionName('')
+    setPromotionDescription('')
+    setPromotionDiscountType('percentage')
+    setPromotionDiscountValue('')
+    setPromotionStartDate('')
+    setPromotionEndDate('')
+    setPromotionTargetType('all')
+    setSelectedNeighborhoods([])
+    setEditingPromotion(null)
+  }
+
+  const openPromotionDialog = (promotion?: DeliveryPromotion) => {
+    if (promotion) {
+      setEditingPromotion(promotion)
+      setPromotionName(promotion.name)
+      setPromotionDescription(promotion.description || '')
+      setPromotionDiscountType(promotion.discount_type)
+      setPromotionDiscountValue(promotion.discount_value.toString())
+      setPromotionStartDate(promotion.start_date)
+      setPromotionEndDate(promotion.end_date)
+      setPromotionTargetType(promotion.target_type)
+      // Carregar bairros selecionados se for específico
+      loadPromotionNeighborhoods(promotion.id)
+    } else {
+      resetPromotionForm()
+    }
+    setIsPromotionDialogOpen(true)
+  }
+
+  const loadPromotionNeighborhoods = async (promotionId: string) => {
+    const { data } = await supabase
+      .from('delivery_promotion_neighborhoods')
+      .select('neighborhood_id')
+      .eq('promotion_id', promotionId)
+
+    if (data) {
+      setSelectedNeighborhoods(data.map(d => d.neighborhood_id))
+    }
+  }
+
+  const savePromotion = async () => {
+    if (!promotionName.trim() || !promotionStartDate || !promotionEndDate) {
+      toast.error('Preencha todos os campos obrigatórios')
+      return
+    }
+
+    if (new Date(promotionEndDate) < new Date(promotionStartDate)) {
+      toast.error('Data final deve ser maior que data inicial')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const data = {
+        name: promotionName.trim(),
+        description: promotionDescription.trim() || null,
+        discount_type: promotionDiscountType,
+        discount_value: parseFloat(promotionDiscountValue) || 0,
+        target_type: promotionTargetType,
+        start_date: promotionStartDate,
+        end_date: promotionEndDate,
+        is_active: true,
+      }
+
+      let promotionId: string
+
+      if (editingPromotion) {
+        const { error } = await supabase
+          .from('delivery_promotions')
+          .update(data)
+          .eq('id', editingPromotion.id)
+
+        if (error) throw error
+        promotionId = editingPromotion.id
+
+        setPromotions(promotions.map(p => 
+          p.id === editingPromotion.id ? { ...p, ...data } : p
+        ))
+      } else {
+        const { data: newPromotion, error } = await supabase
+          .from('delivery_promotions')
+          .insert(data)
+          .select()
+          .single()
+
+        if (error) throw error
+        promotionId = newPromotion.id
+
+        setPromotions([...promotions, newPromotion])
+      }
+
+      // Atualizar bairros específicos se necessário
+      if (promotionTargetType === 'specific') {
+        // Remover bairros antigos
+        await supabase
+          .from('delivery_promotion_neighborhoods')
+          .delete()
+          .eq('promotion_id', promotionId)
+
+        // Inserir novos bairros
+        if (selectedNeighborhoods.length > 0) {
+          const { error } = await supabase
+            .from('delivery_promotion_neighborhoods')
+            .insert(
+              selectedNeighborhoods.map(neighborhoodId => ({
+                promotion_id: promotionId,
+                neighborhood_id: neighborhoodId,
+              }))
+            )
+
+          if (error) throw error
+        }
+      }
+
+      toast.success(editingPromotion ? 'Promoção atualizada!' : 'Promoção criada!')
+      setIsPromotionDialogOpen(false)
+      resetPromotionForm()
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar promoção')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const deletePromotion = async (id: string) => {
+    if (!confirm('Deseja excluir esta promoção?')) return
+
+    try {
+      const { error } = await supabase
+        .from('delivery_promotions')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      setPromotions(promotions.filter(p => p.id !== id))
+      toast.success('Promoção excluída!')
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir promoção')
+    }
+  }
+
+  const togglePromotionActive = async (promotion: DeliveryPromotion) => {
+    try {
+      const { error } = await supabase
+        .from('delivery_promotions')
+        .update({ is_active: !promotion.is_active })
+        .eq('id', promotion.id)
+
+      if (error) throw error
+
+      setPromotions(promotions.map(p => 
+        p.id === promotion.id ? { ...p, is_active: !p.is_active } : p
+      ))
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao atualizar promoção')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -252,6 +590,10 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
           <TabsTrigger value="store" className="flex items-center gap-2">
             <Store className="h-4 w-4" />
             Loja
+          </TabsTrigger>
+          <TabsTrigger value="delivery" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            Taxas de Entrega
           </TabsTrigger>
           <TabsTrigger value="messages" className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
@@ -301,13 +643,6 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
                       type="email"
                       {...storeForm.register('store_email')}
                       placeholder="contato@minhaloja.com"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>URL do Logo</Label>
-                    <Input
-                      {...storeForm.register('store_logo')}
-                      placeholder="https://..."
                     />
                   </div>
                 </div>
@@ -373,6 +708,252 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
               </CardContent>
             </Card>
           </form>
+        </TabsContent>
+
+        {/* Tab Taxas de Entrega */}
+        <TabsContent value="delivery" className="space-y-6">
+          {/* Frete Grátis por Valor Mínimo */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Truck className="h-5 w-5" />
+                Frete Grátis Automático
+              </CardTitle>
+              <CardDescription>
+                Configure um valor mínimo de compra para oferecer frete grátis automaticamente
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                <div className="space-y-1">
+                  <Label htmlFor="free-shipping-switch" className="text-base font-medium">
+                    Ativar frete grátis por valor mínimo
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Quando ativado, compras acima do valor mínimo terão frete grátis automaticamente
+                  </p>
+                </div>
+                <Switch
+                  id="free-shipping-switch"
+                  checked={freeShippingEnabled}
+                  onCheckedChange={setFreeShippingEnabled}
+                />
+              </div>
+              
+              {freeShippingEnabled && (
+                <div className="space-y-2">
+                  <Label>Valor mínimo para frete grátis (R$)</Label>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={freeShippingMinValue}
+                      onChange={(e) => setFreeShippingMinValue(e.target.value)}
+                      placeholder="200,00"
+                      className="w-40"
+                    />
+                    <Button onClick={saveFreeShippingConfig} disabled={isLoading}>
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                      {isLoading ? '' : 'Salvar'}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Um banner será exibido na loja informando os clientes sobre essa promoção
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Bairros */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="h-5 w-5" />
+                  Bairros para Entrega
+                </CardTitle>
+                <CardDescription>
+                  Configure os bairros e suas respectivas taxas de entrega
+                </CardDescription>
+              </div>
+              <Button onClick={() => openNeighborhoodDialog()}>
+                <Plus className="mr-2 h-4 w-4" />
+                Novo Bairro
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {neighborhoods.length === 0 ? (
+                <div className="text-center py-8">
+                  <MapPin className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground">Nenhum bairro cadastrado</p>
+                  <Button variant="outline" className="mt-4" onClick={() => openNeighborhoodDialog()}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Cadastrar primeiro bairro
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Bairro</TableHead>
+                        <TableHead className="text-right">Taxa</TableHead>
+                        <TableHead className="text-center">Ativo</TableHead>
+                        <TableHead className="w-[100px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {neighborhoods.map((neighborhood) => (
+                        <TableRow key={neighborhood.id}>
+                          <TableCell className="font-medium">{neighborhood.name}</TableCell>
+                          <TableCell className="text-right">
+                            {neighborhood.fee === 0 ? (
+                              <Badge variant="secondary">Grátis</Badge>
+                            ) : (
+                              <span>R$ {neighborhood.fee.toFixed(2).replace('.', ',')}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Switch
+                              checked={neighborhood.is_active}
+                              onCheckedChange={() => toggleNeighborhoodActive(neighborhood)}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openNeighborhoodDialog(neighborhood)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteNeighborhood(neighborhood.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Promoções de Frete */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Percent className="h-5 w-5" />
+                  Promoções de Frete
+                </CardTitle>
+                <CardDescription>
+                  Configure promoções de desconto ou frete fixo por período
+                </CardDescription>
+              </div>
+              <Button onClick={() => openPromotionDialog()}>
+                <Plus className="mr-2 h-4 w-4" />
+                Nova Promoção
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {promotions.length === 0 ? (
+                <div className="text-center py-8">
+                  <Percent className="mx-auto h-12 w-12 text-muted-foreground mb-2" />
+                  <p className="text-muted-foreground">Nenhuma promoção cadastrada</p>
+                  <Button variant="outline" className="mt-4" onClick={() => openPromotionDialog()}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Criar primeira promoção
+                  </Button>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Desconto</TableHead>
+                        <TableHead>Período</TableHead>
+                        <TableHead>Abrangência</TableHead>
+                        <TableHead className="text-center">Ativo</TableHead>
+                        <TableHead className="w-[100px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {promotions.map((promotion) => {
+                        const isExpired = new Date(promotion.end_date) < new Date()
+                        const isUpcoming = new Date(promotion.start_date) > new Date()
+                        
+                        return (
+                          <TableRow key={promotion.id} className={isExpired ? 'opacity-50' : ''}>
+                            <TableCell className="font-medium">
+                              {promotion.name}
+                              {isExpired && <Badge variant="destructive" className="ml-2">Expirada</Badge>}
+                              {isUpcoming && <Badge variant="secondary" className="ml-2">Futura</Badge>}
+                            </TableCell>
+                            <TableCell>
+                              {promotion.discount_type === 'percentage' ? (
+                                <Badge className="bg-green-100 text-green-700">
+                                  {promotion.discount_value}% OFF
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-blue-100 text-blue-700">
+                                  Frete R$ {promotion.discount_value.toFixed(2).replace('.', ',')}
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {formatDate(promotion.start_date)} - {formatDate(promotion.end_date)}
+                            </TableCell>
+                            <TableCell>
+                              {promotion.target_type === 'all' ? (
+                                <Badge variant="outline">Todos os bairros</Badge>
+                              ) : (
+                                <Badge variant="outline">Bairros específicos</Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Switch
+                                checked={promotion.is_active}
+                                onCheckedChange={() => togglePromotionActive(promotion)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openPromotionDialog(promotion)}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => deletePromotion(promotion.id)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Tab Mensagens */}
@@ -601,6 +1182,231 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Novo/Editar Bairro */}
+      <Dialog open={isNeighborhoodDialogOpen} onOpenChange={(open) => {
+        setIsNeighborhoodDialogOpen(open)
+        if (!open) resetNeighborhoodForm()
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingNeighborhood ? 'Editar Bairro' : 'Novo Bairro'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Nome do Bairro *</Label>
+              <Input
+                value={neighborhoodName}
+                onChange={(e) => setNeighborhoodName(e.target.value)}
+                placeholder="Ex: Centro, Jardim América..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Taxa de Entrega (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={neighborhoodFee}
+                onChange={(e) => setNeighborhoodFee(e.target.value)}
+                placeholder="0,00"
+              />
+              <p className="text-xs text-muted-foreground">
+                Deixe 0 para frete grátis neste bairro
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsNeighborhoodDialogOpen(false)}
+                disabled={isLoading}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={saveNeighborhood} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  'Salvar'
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Nova/Editar Promoção */}
+      <Dialog open={isPromotionDialogOpen} onOpenChange={(open) => {
+        setIsPromotionDialogOpen(open)
+        if (!open) resetPromotionForm()
+      }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {editingPromotion ? 'Editar Promoção' : 'Nova Promoção de Frete'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+            <div className="space-y-2">
+              <Label>Nome da Promoção *</Label>
+              <Input
+                value={promotionName}
+                onChange={(e) => setPromotionName(e.target.value)}
+                placeholder="Ex: Frete Grátis Natal, Desconto de Verão..."
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Descrição (opcional)</Label>
+              <Textarea
+                value={promotionDescription}
+                onChange={(e) => setPromotionDescription(e.target.value)}
+                placeholder="Descrição da promoção..."
+                rows={2}
+              />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Tipo de Desconto</Label>
+                <Select
+                  value={promotionDiscountType}
+                  onValueChange={(v) => setPromotionDiscountType(v as 'percentage' | 'fixed')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percentage">Porcentagem de Desconto (%)</SelectItem>
+                    <SelectItem value="fixed">Valor Fixo do Frete (R$)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>
+                  {promotionDiscountType === 'percentage' ? 'Desconto (%)' : 'Valor do Frete (R$)'}
+                </Label>
+                <Input
+                  type="number"
+                  step={promotionDiscountType === 'percentage' ? '1' : '0.01'}
+                  min="0"
+                  max={promotionDiscountType === 'percentage' ? '100' : undefined}
+                  value={promotionDiscountValue}
+                  onChange={(e) => setPromotionDiscountValue(e.target.value)}
+                  placeholder={promotionDiscountType === 'percentage' ? '10' : '0,00'}
+                />
+                {promotionDiscountType === 'percentage' && (
+                  <p className="text-xs text-muted-foreground">
+                    Use 100 para frete grátis
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Data Inicial *</Label>
+                <Input
+                  type="date"
+                  value={promotionStartDate}
+                  onChange={(e) => setPromotionStartDate(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Data Final *</Label>
+                <Input
+                  type="date"
+                  value={promotionEndDate}
+                  onChange={(e) => setPromotionEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Abrangência</Label>
+              <Select
+                value={promotionTargetType}
+                onValueChange={(v) => setPromotionTargetType(v as 'all' | 'specific')}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os bairros</SelectItem>
+                  <SelectItem value="specific">Bairros específicos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {promotionTargetType === 'specific' && (
+              <div className="space-y-2">
+                <Label>Selecione os bairros</Label>
+                <div className="border rounded-md p-3 max-h-40 overflow-y-auto space-y-2">
+                  {neighborhoods.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Cadastre bairros primeiro
+                    </p>
+                  ) : (
+                    neighborhoods.map((n) => (
+                      <label key={n.id} className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={selectedNeighborhoods.includes(n.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedNeighborhoods([...selectedNeighborhoods, n.id])
+                            } else {
+                              setSelectedNeighborhoods(selectedNeighborhoods.filter(id => id !== n.id))
+                            }
+                          }}
+                          className="rounded"
+                        />
+                        <span className="text-sm">{n.name}</span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          R$ {n.fee.toFixed(2).replace('.', ',')}
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsPromotionDialogOpen(false)}
+                disabled={isLoading}
+              >
+                Cancelar
+              </Button>
+              <Button onClick={savePromotion} disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  'Salvar'
+                )}
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

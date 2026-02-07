@@ -20,12 +20,26 @@ export default async function ConfiguracoesPage() {
   // Buscar usuário atual
   const { data: { user } } = await supabase.auth.getUser()
 
+  // Buscar bairros para entrega
+  const { data: neighborhoods } = await supabase
+    .from('delivery_neighborhoods')
+    .select('*')
+    .order('display_order', { ascending: true })
+
+  // Buscar promoções de frete
+  const { data: promotions } = await supabase
+    .from('delivery_promotions')
+    .select('*')
+    .order('created_at', { ascending: false })
+
   return (
     <DashboardLayout storeName={storeConfig?.store_name}>
       <ConfiguracoesClient
         storeConfig={storeConfig}
         users={users || []}
         currentUserId={user?.id || ''}
+        neighborhoods={neighborhoods || []}
+        promotions={promotions || []}
       />
     </DashboardLayout>
   )

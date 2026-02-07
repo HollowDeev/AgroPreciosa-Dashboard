@@ -10,39 +10,55 @@ async function getOffersData() {
     .select('*')
     .single()
 
-  const { data: offers } = await supabase
-    .from('offers')
+  // Buscar pacotes de ofertas com contagem de itens
+  const { data: packages } = await supabase
+    .from('offer_packages')
     .select(`
       *,
-      products (id, name, sale_price),
-      combos (id, name, combo_price)
+      items:offer_package_items(count)
     `)
+    .order('display_order')
     .order('created_at', { ascending: false })
+
+  // Formatar contagem de itens
+  const formattedPackages = (packages || []).map(pkg => ({
+    ...pkg,
+    items: pkg.items || []
+  }))
 
   const { data: products } = await supabase
     .from('products')
-    .select('id, name, sale_price')
+    .select(`
+      id, name, sale_price, slug, sku, brand,
+      categories(id, name),
+      product_images(image_url, is_primary)
+    `)
     .eq('is_active', true)
     .order('name')
 
-  const { data: combos } = await supabase
-    .from('combos')
-    .select('id, name, combo_price')
+  // Buscar categorias para filtro
+  const { data: categories } = await supabase
+    .from('categories')
+    .select('id, name')
     .eq('is_active', true)
     .order('name')
 
-  const { data: offerHistory } = await supabase
-    .from('offer_history')
-    .select('*')
-    .order('applied_at', { ascending: false })
-    .limit(100)
+  // URL da loja (pode vir de variável de ambiente ou config)
+  const storeUrl = process.env.NEXT_PUBLIC_STORE_URL || 'http://localhost:3001'
+
+  // Formatar produtos com imagem primária
+  const formattedProducts = (products || []).map(p => ({
+    ...p,
+    image: p.product_images?.find((img: any) => img.is_primary)?.image_url || p.product_images?.[0]?.image_url || null,
+    categoryName: (p.categories as any)?.name || null
+  }))
 
   return {
     storeConfig,
-    offers: offers || [],
-    products: products || [],
-    combos: combos || [],
-    offerHistory: offerHistory || [],
+    packages: formattedPackages,
+    products: formattedProducts,
+    categories: categories || [],
+    storeUrl,
   }
 }
 
@@ -52,11 +68,10 @@ export default async function OffersPage() {
   return (
     <DashboardLayout storeName={data.storeConfig?.store_name}>
       <OffersClient 
-        initialOffers={data.offers}
+        initialPackages={data.packages}
         products={data.products}
-        combos={data.combos}
-        offerHistory={data.offerHistory}
-        storeConfig={data.storeConfig}
+        categories={data.categories}
+        storeUrl={data.storeUrl}
       />
     </DashboardLayout>
   )

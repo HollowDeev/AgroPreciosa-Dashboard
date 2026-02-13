@@ -325,11 +325,17 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
         break
       case 'sent':
         message = storeConfig?.whatsapp_message_sent ||
-          `Olá ${customerName}! 🚚\n\nSeu pedido #${orderNumber} saiu para entrega!\n\nAguarde em seu endereço.`
+          `Olá ${customerName}! 🚚\n\nSeu pedido #${orderNumber} saiu para entrega!\n\nAguarde em seu endereço. Se tiver dúvidas, responda por aqui!`
         break
       case 'ready_pickup':
         message = storeConfig?.whatsapp_message_ready ||
-          `Olá ${customerName}! ✅\n\nSeu pedido #${orderNumber} está pronto para retirada!\n\n📍 ${storeConfig?.store_address || 'Nossa loja'}`
+          `Olá ${customerName}! ✅\n\nSeu pedido #${orderNumber} está pronto para retirada!\n\n📍 ${storeConfig?.store_address || 'Nossa loja'}\n\nVenha quando quiser, estamos te esperando!`
+        break
+      case 'delivered':
+        message = `Olá ${customerName}! 🎉\n\nSeu pedido #${orderNumber} foi entregue/retirado com sucesso!\n\nAgradecemos pela preferência. Qualquer dúvida ou sugestão, estamos à disposição!`
+        break
+      case 'cancelled':
+        message = `Olá ${customerName}.\n\nSeu pedido #${orderNumber} foi cancelado. Se precisar de mais informações ou quiser refazer o pedido, estamos aqui para ajudar!`
         break
       default:
         message = `Olá ${customerName}! Seu pedido #${orderNumber} foi atualizado.`
@@ -426,11 +432,8 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
                 <SelectContent>
                   <SelectItem value="pending">Pendente</SelectItem>
                   <SelectItem value="preparing">Em Preparação</SelectItem>
-                  {order.delivery_type === 'delivery' ? (
-                    <SelectItem value="sent">Enviado</SelectItem>
-                  ) : (
-                    <SelectItem value="ready_pickup">Pronto Retirada</SelectItem>
-                  )}
+                  <SelectItem value="sent">Enviado</SelectItem>
+                  <SelectItem value="ready_pickup">Pronto Retirada</SelectItem>
                   <SelectItem value="delivered">Entregue</SelectItem>
                   <SelectItem value="cancelled">Cancelado</SelectItem>
                 </SelectContent>

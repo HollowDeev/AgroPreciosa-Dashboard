@@ -22,9 +22,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { 
-  Truck, 
-  Store, 
+import {
+  Truck,
+  Store,
   MessageCircle,
   Eye,
   CheckCircle,
@@ -45,11 +45,11 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCurrency, formatDateTime, generateWhatsAppLink } from '@/lib/utils'
-import { 
-  OrderWithDetails, 
-  OrderStatus, 
+import {
+  OrderWithDetails,
+  OrderStatus,
   StoreConfig,
-  ORDER_STATUS_LABELS, 
+  ORDER_STATUS_LABELS,
   ORDER_STATUS_COLORS,
   PAYMENT_METHOD_LABELS,
 } from '@/types/database'
@@ -131,7 +131,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
   // Configurar Realtime subscription
   useEffect(() => {
     console.log('🔌 Iniciando conexão Realtime...')
-    
+
     // Criar canal de realtime para a tabela orders
     const channel = supabase
       .channel('orders-realtime')
@@ -144,23 +144,23 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
         },
         async (payload) => {
           console.log('🆕 Novo pedido recebido via Realtime:', payload)
-          
+
           // Buscar o pedido completo com relacionamentos
           const newOrder = await fetchOrderWithDetails(payload.new.id)
           if (newOrder) {
             setOrders(prev => [newOrder, ...prev])
-            
+
             // Notificação sonora e visual
             toast.success(`🔔 Novo pedido #${newOrder.order_number}!`, {
               description: `${newOrder.customer?.name || 'Cliente'} - ${formatCurrency(newOrder.total)}`,
               duration: 10000,
             })
-            
+
             // Tentar tocar som de notificação
             try {
               const audio = new Audio('/notification.mp3')
               audio.volume = 0.5
-              audio.play().catch(() => {})
+              audio.play().catch(() => { })
             } catch (e) {
               // Ignorar erro se não conseguir tocar som
             }
@@ -176,12 +176,12 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
         },
         async (payload) => {
           console.log('📝 Pedido atualizado via Realtime:', payload)
-          
+
           // Buscar o pedido atualizado com relacionamentos
           const updatedOrder = await fetchOrderWithDetails(payload.new.id)
           if (updatedOrder) {
             setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o))
-            
+
             // Atualizar o pedido selecionado se estiver aberto
             if (selectedOrder?.id === updatedOrder.id) {
               setSelectedOrder(updatedOrder)
@@ -204,7 +204,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
       .subscribe((status, err) => {
         console.log('📡 Realtime status:', status, err ? `Erro: ${err.message}` : '')
         setIsConnected(status === 'SUBSCRIBED')
-        
+
         if (status === 'SUBSCRIBED') {
           console.log('✅ Conectado ao Realtime com sucesso!')
         } else if (status === 'CHANNEL_ERROR') {
@@ -221,8 +221,8 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
   }, [supabase, fetchOrderWithDetails, selectedOrder?.id])
 
   const toggleOrderExpanded = (orderId: string) => {
-    setExpandedOrders(prev => 
-      prev.includes(orderId) 
+    setExpandedOrders(prev =>
+      prev.includes(orderId)
         ? prev.filter(id => id !== orderId)
         : [...prev, orderId]
     )
@@ -257,7 +257,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
       const newSelected = [...selectedOrders, ...statusOrders.map(o => o.id)]
       setSelectedOrders([...new Set(newSelected)])
     } else {
-      setSelectedOrders(selectedOrders.filter(id => 
+      setSelectedOrders(selectedOrders.filter(id =>
         !statusOrders.some(o => o.id === id)
       ))
     }
@@ -272,15 +272,15 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
 
       if (error) throw error
 
-      setOrders(orders.map(o => 
+      setOrders(orders.map(o =>
         o.id === orderId ? { ...o, status: newStatus } : o
       ))
-      
+
       // Atualizar o pedido selecionado se estiver aberto
       if (selectedOrder?.id === orderId) {
         setSelectedOrder({ ...selectedOrder, status: newStatus })
       }
-      
+
       toast.success('Status atualizado!')
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Erro ao atualizar status'
@@ -302,7 +302,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
 
       if (error) throw error
 
-      setOrders(orders.map(o => 
+      setOrders(orders.map(o =>
         selectedOrders.includes(o.id) ? { ...o, status: newStatus } : o
       ))
       setSelectedOrders([])
@@ -320,7 +320,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
 
     switch (status) {
       case 'preparing':
-        message = storeConfig?.whatsapp_message_preparing || 
+        message = storeConfig?.whatsapp_message_preparing ||
           `Olá ${customerName}! 👋\n\nSeu pedido #${orderNumber} está sendo preparado com carinho! 🛍️\n\nEm breve você receberá uma nova atualização.`
         break
       case 'sent':
@@ -372,11 +372,11 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
   // Card do pedido (estilo accordion)
   const OrderCard = ({ order }: { order: OrderWithDetails }) => {
     const isExpanded = expandedOrders.includes(order.id)
-    
+
     return (
       <Card className="overflow-hidden">
         {/* Header - sempre visível */}
-        <div 
+        <div
           className="flex items-center gap-2 p-3 cursor-pointer hover:bg-muted/50 transition-colors"
           onClick={() => toggleOrderExpanded(order.id)}
         >
@@ -385,7 +385,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
             onCheckedChange={(checked) => handleSelectOrder(order.id, !!checked)}
             onClick={(e) => e.stopPropagation()}
           />
-          
+
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="font-medium truncate">
@@ -478,12 +478,12 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
   }
 
   // Seção por status
-  const StatusSection = ({ 
-    title, 
-    icon: Icon, 
-    orders, 
-    statusKey 
-  }: { 
+  const StatusSection = ({
+    title,
+    icon: Icon,
+    orders,
+    statusKey
+  }: {
     title: string
     icon: LucideIcon
     orders: OrderWithDetails[]
@@ -637,11 +637,16 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
                   <span className="text-muted-foreground">Forma:</span>{' '}
                   {order.payment_method ? PAYMENT_METHOD_LABELS[order.payment_method] : 'Não informado'}
                 </p>
+                {order.payment_method === 'cash' && order.change_for && order.change_for > 0 ? (
+                  <div className="mt-1 mb-2 inline-flex items-center rounded-md border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-sm font-semibold text-amber-800 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-400">
+                    Troco para: {formatCurrency(order.change_for)}
+                  </div>
+                ) : null}
                 <p>
                   <span className="text-muted-foreground">Status:</span>{' '}
                   <Badge variant={order.payment_status === 'paid' ? 'default' : 'secondary'}>
-                    {order.payment_status === 'paid' ? 'Pago' : 
-                     order.payment_status === 'refunded' ? 'Reembolsado' : 'Pendente'}
+                    {order.payment_status === 'paid' ? 'Pago' :
+                      order.payment_status === 'refunded' ? 'Reembolsado' : 'Pendente'}
                   </Badge>
                 </p>
                 <p className="text-xs text-muted-foreground italic">
@@ -756,14 +761,14 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
             Gerencie os pedidos da sua loja
           </p>
         </div>
-        
+
         <div className="flex items-center gap-2">
           {/* Botão de atualizar */}
           <Button variant="outline" size="sm" onClick={refreshOrders}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Atualizar
           </Button>
-          
+
           {/* Ações em massa */}
           {selectedOrders.length > 0 && (
             <>
@@ -813,7 +818,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
           orders={ordersByStatus.preparing}
           statusKey="preparing"
         />
-        
+
         {deliveryTypeFilter !== 'pickup' && (
           <StatusSection
             title="Pedidos Enviados"
@@ -822,7 +827,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
             statusKey="sent"
           />
         )}
-        
+
         {deliveryTypeFilter !== 'delivery' && (
           <StatusSection
             title="Prontos para Retirada"
@@ -831,14 +836,14 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
             statusKey="ready_pickup"
           />
         )}
-        
+
         <StatusSection
           title="Entregues"
           icon={CheckCircle}
           orders={ordersByStatus.delivered}
           statusKey="delivered"
         />
-        
+
         <StatusSection
           title="Cancelados"
           icon={XCircle}

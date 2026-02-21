@@ -196,6 +196,7 @@ export interface Order {
   total: number
   payment_method: PaymentMethod | null
   payment_status: PaymentStatus
+  change_for: number | null
   notes: string | null
   delivery_address: {
     street: string

@@ -85,6 +85,7 @@ interface OfferPackage {
   start_date: string | null
   end_date: string | null
   is_active: boolean
+  payment_restriction: 'all' | 'cash_pix_debit'
   display_order: number
   created_at: string
   items?: OfferPackageItem[]
@@ -116,6 +117,7 @@ const packageSchema = z.object({
   discount_mode: z.enum(['fixed', 'custom']),
   fixed_discount_type: z.enum(['percentage', 'fixed_value']),
   fixed_discount_value: z.number().min(0),
+  payment_restriction: z.enum(['all', 'cash_pix_debit']),
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   is_active: z.boolean(),
@@ -130,9 +132,9 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [editingPackage, setEditingPackage] = useState<OfferPackage | null>(null)
-  const [selectedProducts, setSelectedProducts] = useState<Map<string, { 
+  const [selectedProducts, setSelectedProducts] = useState<Map<string, {
     discountType: 'percentage' | 'fixed_value'
-    discountValue: number 
+    discountValue: number
   }>>(new Map())
   const [productSearch, setProductSearch] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
@@ -153,6 +155,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
       discount_mode: 'fixed',
       fixed_discount_type: 'percentage',
       fixed_discount_value: 10,
+      payment_restriction: 'all',
       start_date: '',
       end_date: '',
       is_active: true,
@@ -181,10 +184,10 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
   const filteredProducts = products.filter(p => {
     // Já selecionado
     if (selectedProducts.has(p.id)) return false
-    
+
     // Filtro por categoria
     if (selectedCategory !== 'all' && p.categoryName !== selectedCategory) return false
-    
+
     // Filtro por busca (nome, SKU ou marca)
     if (productSearch) {
       const search = productSearch.toLowerCase()
@@ -193,7 +196,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
       const matchesBrand = p.brand?.toLowerCase().includes(search)
       if (!matchesName && !matchesSku && !matchesBrand) return false
     }
-    
+
     return true
   })
 
@@ -205,6 +208,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
       discount_mode: 'fixed',
       fixed_discount_type: 'percentage',
       fixed_discount_value: 10,
+      payment_restriction: 'all',
       start_date: '',
       end_date: '',
       is_active: true,
@@ -238,6 +242,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
       discount_mode: pkg.discount_mode,
       fixed_discount_type: pkg.fixed_discount_type,
       fixed_discount_value: pkg.fixed_discount_value,
+      payment_restriction: (pkg as any).payment_restriction || 'all',
       start_date: pkg.start_date || '',
       end_date: pkg.end_date || '',
       is_active: pkg.is_active,
@@ -292,6 +297,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
         discount_mode: data.discount_mode,
         fixed_discount_type: data.fixed_discount_type,
         fixed_discount_value: data.fixed_discount_value,
+        payment_restriction: data.payment_restriction,
         start_date: data.start_date || null,
         end_date: data.end_date || null,
         is_active: data.is_active,
@@ -494,8 +500,8 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                     <TableCell>
                       {pkg.discount_mode === 'fixed' ? (
                         <Badge variant="secondary">
-                          {pkg.fixed_discount_type === 'percentage' 
-                            ? `${pkg.fixed_discount_value}% todos` 
+                          {pkg.fixed_discount_type === 'percentage'
+                            ? `${pkg.fixed_discount_value}% todos`
                             : `R$ ${pkg.fixed_discount_value} todos`}
                         </Badge>
                       ) : (
@@ -517,13 +523,22 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                       )}
                     </TableCell>
                     <TableCell>
+                      {(pkg as any).payment_restriction === 'cash_pix_debit' ? (
+                        <Badge variant="outline" className="text-xs text-orange-700 border-orange-300">
+                          Pix/Débito/Dinheiro
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">Todas</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <div className="flex items-center gap-2">
                         <code className="text-xs bg-muted px-2 py-1 rounded">
                           /ofertas/{pkg.slug}
                         </code>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
+                        <Button
+                          variant="ghost"
+                          size="icon"
                           className="h-7 w-7"
                           onClick={() => copyLink(pkg.slug)}
                         >
@@ -632,11 +647,31 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
               </div>
             </div>
 
+            {/* Restrição de Pagamento */}
+            <div className="space-y-2">
+              <Label>Forma de Pagamento Aceita</Label>
+              <Select
+                value={watch('payment_restriction')}
+                onValueChange={(v) => setValue('payment_restriction', v as 'all' | 'cash_pix_debit')}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas as formas (incluindo crédito parcelado)</SelectItem>
+                  <SelectItem value="cash_pix_debit">Apenas Pix, Débito, Dinheiro e Crédito 1×</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                "Apenas Pix/Débito/Dinheiro" significa que o cliente pode usar o preço promocional apenas nessas formas — ou pagar o preço normal e parcelar no crédito.
+              </p>
+            </div>
+
             {/* Modo de Desconto */}
             <div className="space-y-4">
               <Label>Tipo de Desconto</Label>
               <div className="grid gap-4 md:grid-cols-2">
-                <Card 
+                <Card
                   className={`cursor-pointer transition-all ${discountMode === 'fixed' ? 'ring-2 ring-primary' : ''}`}
                   onClick={() => setValue('discount_mode', 'fixed')}
                 >
@@ -654,7 +689,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                     </div>
                   </CardContent>
                 </Card>
-                <Card 
+                <Card
                   className={`cursor-pointer transition-all ${discountMode === 'custom' ? 'ring-2 ring-primary' : ''}`}
                   onClick={() => setValue('discount_mode', 'custom')}
                 >
@@ -726,7 +761,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                   {showProductSelector ? 'Fechar' : 'Adicionar Produtos'}
                 </Button>
               </div>
-              
+
               {/* Busca de Produtos */}
               {showProductSelector && (
                 <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
@@ -759,8 +794,8 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                   <div className="border rounded-lg max-h-64 overflow-y-auto bg-background">
                     {filteredProducts.length === 0 ? (
                       <div className="p-4 text-center text-muted-foreground text-sm">
-                        {productSearch || selectedCategory !== 'all' 
-                          ? 'Nenhum produto encontrado' 
+                        {productSearch || selectedCategory !== 'all'
+                          ? 'Nenhum produto encontrado'
                           : 'Digite para buscar ou selecione uma categoria'}
                       </div>
                     ) : (
@@ -784,7 +819,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                               </div>
                             )}
                           </div>
-                          
+
                           {/* Info do produto */}
                           <div className="flex-1 min-w-0">
                             <p className="font-medium truncate">{product.name}</p>
@@ -798,14 +833,14 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                               )}
                             </div>
                           </div>
-                          
+
                           {/* Preço */}
                           <div className="text-right flex-shrink-0">
                             <p className="font-medium text-green-600">
                               {formatCurrency(product.sale_price)}
                             </p>
                           </div>
-                          
+
                           {/* Botão adicionar */}
                           <Button
                             type="button"
@@ -849,7 +884,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                       if (!product) return null
                       const finalPrice = calculateFinalPrice(product, discount.discountType, discount.discountValue)
                       const discountPercent = ((product.sale_price - finalPrice) / product.sale_price * 100).toFixed(0)
-                      
+
                       return (
                         <div key={productId} className="p-3 flex items-center gap-3">
                           {/* Imagem do produto */}
@@ -866,7 +901,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                               </div>
                             )}
                           </div>
-                          
+
                           <div className="flex-1 min-w-0">
                             <p className="font-medium truncate">{product.name}</p>
                             <div className="flex items-center gap-2 text-sm">
@@ -881,7 +916,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                               </Badge>
                             </div>
                           </div>
-                          
+
                           {discountMode === 'custom' && (
                             <div className="flex items-center gap-2">
                               <Select
@@ -905,7 +940,7 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                               />
                             </div>
                           )}
-                          
+
                           <Button
                             type="button"
                             variant="ghost"
@@ -927,6 +962,26 @@ export function OffersClient({ initialPackages, products, categories, storeUrl }
                   Busque e adicione produtos à oferta
                 </p>
               )}
+            </div>
+
+            {/* Restrição de Pagamento */}
+            <div className="space-y-2">
+              <Label>Restrição de Pagamento</Label>
+              <Select
+                value={watch('payment_restriction')}
+                onValueChange={(v) => setValue('payment_restriction', v as any)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos (inclui parcelamento)</SelectItem>
+                  <SelectItem value="cash_pix_debit">Apenas à vista (Pix, Débito, Dinheiro, 1x Crédito)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Se escolher 'Apenas à vista', o cliente poderá escolher entre o preço promocional ou o preço cheio para parcelar.
+              </p>
             </div>
 
             {/* Status */}

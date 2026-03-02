@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -35,10 +35,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { 
-  Settings, 
-  Store, 
-  MessageSquare, 
+import {
+  Settings,
+  Store,
+  MessageSquare,
   Users,
   Plus,
   Loader2,
@@ -50,6 +50,8 @@ import {
   MapPin,
   Calendar,
   Percent,
+  CreditCard,
+  Info,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDate } from '@/lib/utils'
@@ -73,6 +75,14 @@ interface DeliveryPromotion {
   start_date: string
   end_date: string
   is_active: boolean
+}
+
+interface InstallmentRule {
+  id: string
+  min_value: number
+  max_installments: number
+  is_active: boolean
+  display_order: number
 }
 
 const storeConfigSchema = z.object({
@@ -111,7 +121,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
   const [users, setUsers] = useState(initialUsers)
   const [isLoading, setIsLoading] = useState(false)
   const [isUserDialogOpen, setIsUserDialogOpen] = useState(false)
-  
+
   // Estados para taxa de entrega
   const [neighborhoods, setNeighborhoods] = useState<DeliveryNeighborhood[]>(initialNeighborhoods)
   const [promotions, setPromotions] = useState<DeliveryPromotion[]>(initialPromotions)
@@ -119,11 +129,11 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
   const [isPromotionDialogOpen, setIsPromotionDialogOpen] = useState(false)
   const [editingNeighborhood, setEditingNeighborhood] = useState<DeliveryNeighborhood | null>(null)
   const [editingPromotion, setEditingPromotion] = useState<DeliveryPromotion | null>(null)
-  
+
   // Form para bairro
   const [neighborhoodName, setNeighborhoodName] = useState('')
   const [neighborhoodFee, setNeighborhoodFee] = useState('')
-  
+
   // Form para promoção
   const [promotionName, setPromotionName] = useState('')
   const [promotionDescription, setPromotionDescription] = useState('')
@@ -141,6 +151,25 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
   const [freeShippingMinValue, setFreeShippingMinValue] = useState(
     (storeConfig as any)?.free_shipping_min_value?.toString() || ''
   )
+
+  // Estados para parcelamento
+  const [installmentEnabled, setInstallmentEnabled] = useState(
+    (storeConfig as any)?.installment_enabled === true
+  )
+  const [installmentMinValue, setInstallmentMinValue] = useState(
+    (storeConfig as any)?.installment_min_value?.toString() || '100'
+  )
+  const [installmentMaxCount, setInstallmentMaxCount] = useState(
+    (storeConfig as any)?.installment_max_count?.toString() || '12'
+  )
+  const [installmentInterestRate, setInstallmentInterestRate] = useState(
+    (storeConfig as any)?.installment_interest_rate?.toString() || '0'
+  )
+
+  const [installmentRules, setInstallmentRules] = useState<InstallmentRule[]>([])
+  const [isAddingRule, setIsAddingRule] = useState(false)
+  const [ruleMinValue, setRuleMinValue] = useState('')
+  const [ruleMaxInstallments, setRuleMaxInstallments] = useState('2')
 
   const storeForm = useForm<StoreConfigForm>({
     defaultValues: {
@@ -165,7 +194,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
   // Função para lidar com toggle do clube
   const handleClubToggle = async (enabled: boolean) => {
     storeForm.setValue('enable_club_discount', enabled)
-    
+
     // Se estiver desabilitando, desativar todas as ofertas do clube
     if (!enabled) {
       try {
@@ -173,15 +202,15 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
           .from('offers')
           .update({ is_active: false })
           .eq('offer_type', 'clube_desconto')
-        
+
         if (error) throw error
-        
+
         // Também desativar combos exclusivos do clube
         await supabase
           .from('combos')
           .update({ is_active: false })
           .eq('is_club_only', true)
-        
+
         toast.info('Ofertas e combos do clube foram desativados')
       } catch (error: any) {
         console.error('Erro ao desativar ofertas do clube:', error)
@@ -313,11 +342,104 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
     setIsNeighborhoodDialogOpen(true)
   }
 
+  const fetchInstallmentRules = async () => {
+    const { data, error } = await supabase
+      .from('installment_rules')
+      .select('*')
+      .order('min_value', { ascending: true })
+
+    if (error) {
+      console.error('Erro ao buscar regras de parcelamento:', error)
+      return
+    }
+
+    setInstallmentRules(data || [])
+  }
+
+  const saveInstallmentRule = async () => {
+    if (!ruleMinValue.trim() || !ruleMaxInstallments.trim()) {
+      toast.error('Preencha todos os campos da regra de parcelamento')
+      return
+    }
+
+    const minValue = parseFloat(ruleMinValue)
+    const maxInstallments = parseInt(ruleMaxInstallments)
+
+    if (isNaN(minValue) || minValue <= 0 || isNaN(maxInstallments) || maxInstallments <= 1) {
+      toast.error('Valores inválidos para a regra de parcelamento')
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const { error } = await supabase
+        .from('installment_rules')
+        .insert({ min_value: minValue, max_installments: maxInstallments })
+
+      if (error) throw error
+
+      toast.success('Regra de parcelamento adicionada!')
+      setIsAddingRule(false)
+      setRuleMinValue('')
+      setRuleMaxInstallments('2')
+      fetchInstallmentRules() // Refresh rules
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao adicionar regra de parcelamento')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const deleteInstallmentRule = async (id: string) => {
+    if (!confirm('Deseja excluir esta regra de parcelamento?')) return
+
+    setIsLoading(true)
+    try {
+      const { error } = await supabase
+        .from('installment_rules')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      toast.success('Regra de parcelamento excluída!')
+      fetchInstallmentRules() // Refresh rules
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao excluir regra de parcelamento')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchInstallmentRules()
+  }, [])
+
+  const saveInstallmentGlobalConfig = async () => {
+    setIsLoading(true)
+    try {
+      const { error } = await supabase
+        .from('store_config')
+        .update({
+          installment_enabled: installmentEnabled,
+          installment_interest_rate: parseFloat(installmentInterestRate) || 0,
+        })
+        .eq('id', storeConfig?.id)
+
+      if (error) throw error
+      toast.success('Configuração global salva!')
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar configuração')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const saveFreeShippingConfig = async () => {
     setIsLoading(true)
     try {
       const value = freeShippingEnabled ? (parseFloat(freeShippingMinValue) || 0) : null
-      
+
       const { error } = await supabase
         .from('store_config')
         .update({ free_shipping_min_value: value })
@@ -331,6 +453,40 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const saveInstallmentConfig = async () => {
+    setIsLoading(true)
+    try {
+      const { error } = await supabase
+        .from('store_config')
+        .update({
+          installment_enabled: installmentEnabled,
+          installment_min_value: parseFloat(installmentMinValue) || 100,
+          installment_max_count: parseInt(installmentMaxCount) || 12,
+          installment_interest_rate: parseFloat(installmentInterestRate) || 0,
+        })
+        .eq('id', storeConfig?.id)
+
+      if (error) throw error
+
+      toast.success('Configuração de parcelamento atualizada!')
+    } catch (error: any) {
+      toast.error(error.message || 'Erro ao salvar configuração')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const getInstallmentPreviewText = () => {
+    if (!installmentEnabled) return null
+    const minVal = parseFloat(installmentMinValue) || 100
+    const maxCount = parseInt(installmentMaxCount) || 12
+    const rate = parseFloat(installmentInterestRate) || 0
+    if (rate === 0) {
+      return `Parcele em até ${maxCount}x sem juros em compras acima de R$ ${minVal.toFixed(2).replace('.', ',')}`
+    }
+    return `Parcele em até ${maxCount}x (com ${rate}% de juros ao mês) em compras acima de R$ ${minVal.toFixed(2).replace('.', ',')}`
   }
 
   const saveNeighborhood = async () => {
@@ -355,7 +511,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
 
         if (error) throw error
 
-        setNeighborhoods(neighborhoods.map(n => 
+        setNeighborhoods(neighborhoods.map(n =>
           n.id === editingNeighborhood.id ? { ...n, ...data } : n
         ))
         toast.success('Bairro atualizado!')
@@ -408,7 +564,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
 
       if (error) throw error
 
-      setNeighborhoods(neighborhoods.map(n => 
+      setNeighborhoods(neighborhoods.map(n =>
         n.id === neighborhood.id ? { ...n, is_active: !n.is_active } : n
       ))
     } catch (error: any) {
@@ -493,7 +649,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
         if (error) throw error
         promotionId = editingPromotion.id
 
-        setPromotions(promotions.map(p => 
+        setPromotions(promotions.map(p =>
           p.id === editingPromotion.id ? { ...p, ...data } : p
         ))
       } else {
@@ -569,7 +725,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
 
       if (error) throw error
 
-      setPromotions(promotions.map(p => 
+      setPromotions(promotions.map(p =>
         p.id === promotion.id ? { ...p, is_active: !p.is_active } : p
       ))
     } catch (error: any) {
@@ -596,6 +752,10 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
           <TabsTrigger value="delivery" className="flex items-center gap-2">
             <Truck className="h-4 w-4" />
             Taxas de Entrega
+          </TabsTrigger>
+          <TabsTrigger value="installments" className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4" />
+            Parcelamento
           </TabsTrigger>
           <TabsTrigger value="messages" className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
@@ -711,7 +871,6 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
             </Card>
           </form>
         </TabsContent>
-
         {/* Tab Taxas de Entrega */}
         <TabsContent value="delivery" className="space-y-6">
           {/* Frete Grátis por Valor Mínimo */}
@@ -741,7 +900,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
                   onCheckedChange={setFreeShippingEnabled}
                 />
               </div>
-              
+
               {freeShippingEnabled && (
                 <div className="space-y-2">
                   <Label>Valor mínimo para frete grátis (R$)</Label>
@@ -894,7 +1053,7 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
                       {promotions.map((promotion) => {
                         const isExpired = new Date(promotion.end_date) < new Date()
                         const isUpcoming = new Date(promotion.start_date) > new Date()
-                        
+
                         return (
                           <TableRow key={promotion.id} className={isExpired ? 'opacity-50' : ''}>
                             <TableCell className="font-medium">
@@ -1098,6 +1257,176 @@ export function ConfiguracoesClient({ storeConfig, users: initialUsers, currentU
                   </TableBody>
                 </Table>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab Parcelamento (Multi-Rule) */}
+        <TabsContent value="installments" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Configurações Globais
+              </CardTitle>
+              <CardDescription>
+                Habilite o parcelamento e defina a taxa de juros global
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+                <div className="space-y-1">
+                  <Label className="text-base font-medium">Habilitar Parcelamento</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Exibe opções de parcelamento no checkout e banners na loja
+                  </p>
+                </div>
+                <Switch
+                  checked={installmentEnabled}
+                  onCheckedChange={setInstallmentEnabled}
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Taxa de Juros Mensal (%)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={installmentInterestRate}
+                      onChange={(e) => setInstallmentInterestRate(e.target.value)}
+                      placeholder="0.00"
+                    />
+                    <Button onClick={saveInstallmentGlobalConfig} disabled={isLoading}>
+                      <Save className="h-4 w-4 mr-2" />
+                      Salvar
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Use 0 para parcelamento sem juros
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Percent className="h-5 w-5" />
+                  Regras de Parcelamento
+                </CardTitle>
+                <CardDescription>
+                  Defina faixas de parcelamento (ex: 2x acima de R$100, 4x acima de R$200)
+                </CardDescription>
+              </div>
+              <Button onClick={() => setIsAddingRule(!isAddingRule)} variant={isAddingRule ? "outline" : "default"}>
+                {isAddingRule ? 'Cancelar' : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Nova Regra
+                  </>
+                )}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {isAddingRule && (
+                <div className="p-4 border rounded-lg bg-muted/20 grid gap-4 md:grid-cols-3 items-end">
+                  <div className="space-y-2">
+                    <Label>Valor Mínimo (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={ruleMinValue}
+                      onChange={(e) => setRuleMinValue(e.target.value)}
+                      placeholder="100.00"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Máximo de Parcelas</Label>
+                    <Select value={ruleMaxInstallments} onValueChange={setRuleMaxInstallments}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[2, 3, 4, 5, 6, 8, 10, 12, 18, 24].map(n => (
+                          <SelectItem key={n} value={n.toString()}>{n}x</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button onClick={saveInstallmentRule} disabled={isLoading}>
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Adicionar Regra'}
+                  </Button>
+                </div>
+              )}
+
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Valor Mínimo</TableHead>
+                      <TableHead>Parcelamento Máximo</TableHead>
+                      <TableHead className="w-[100px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {installmentRules.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
+                          Nenhuma regra configurada. Adicione uma regra para habilitar o parcelamento.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      installmentRules.map((rule) => {
+                        const rate = parseFloat(installmentInterestRate) || 0
+                        return (
+                          <TableRow key={rule.id}>
+                            <TableCell className="font-medium">
+                              R$ {rule.min_value.toFixed(2).replace('.', ',')}
+                            </TableCell>
+                            <TableCell>
+                              Até {rule.max_installments}x {rate === 0 ? 'sem juros' : `com ${rate}% juros`}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteInstallmentRule(rule.id)}
+                                disabled={isLoading}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {installmentRules.length > 0 && (
+                <div className="p-4 border rounded-lg bg-primary/5 border-primary/20 flex gap-3 items-start">
+                  <Info className="h-5 w-5 text-primary mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-bold text-primary">Preview do Banner na Loja:</p>
+                    <p className="text-primary/80 italic mt-1">
+                      {(() => {
+                        const activeRules = installmentRules
+                        if (activeRules.length === 0) return 'Parcelamento desativado (sem regras)'
+                        const maxP = Math.max(...activeRules.map(r => r.max_installments))
+                        const minV = Math.min(...activeRules.map(r => r.min_value))
+                        const rateText = (parseFloat(installmentInterestRate) || 0) === 0 ? 'sem juros' : 'com juros'
+                        return `💳 Parcele em até ${maxP}x ${rateText} — a partir de R$ ${minV.toFixed(2).replace('.', ',')}`
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

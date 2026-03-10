@@ -165,16 +165,24 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
     toast.success('Status atualizado!')
   }
 
+  const applyMessagePlaceholders = (template: string, name: string, num: string | number) =>
+    template
+      .replace(/\{nome\}/g, name)
+      .replace(/\{numero\}/g, String(num))
+
   const getWhatsAppMessage = (order: OrderWithDetails) => {
     const name = order.customer?.name || 'Cliente'
     const num = order.order_number
     const msgs: Partial<Record<OrderStatus, string>> = {
-      preparing: storeConfig?.whatsapp_message_preparing ||
-        `Olá ${name}! 👋\n\nSeu pedido #${num} está sendo preparado com carinho! 🛍️`,
-      sent: storeConfig?.whatsapp_message_sent ||
-        `Olá ${name}! 🚚\n\nSeu pedido #${num} saiu para entrega!`,
-      ready_pickup: storeConfig?.whatsapp_message_ready ||
-        `Olá ${name}! ✅\n\nSeu pedido #${num} está pronto para retirada!\n\n📍 ${storeConfig?.store_address || 'Nossa loja'}`,
+      preparing: storeConfig?.whatsapp_message_preparing
+        ? applyMessagePlaceholders(storeConfig.whatsapp_message_preparing, name, num)
+        : `Olá ${name}! 👋\n\nSeu pedido #${num} está sendo preparado com carinho! 🛍️`,
+      sent: storeConfig?.whatsapp_message_sent
+        ? applyMessagePlaceholders(storeConfig.whatsapp_message_sent, name, num)
+        : `Olá ${name}! 🚚\n\nSeu pedido #${num} saiu para entrega!`,
+      ready_pickup: storeConfig?.whatsapp_message_ready
+        ? applyMessagePlaceholders(storeConfig.whatsapp_message_ready, name, num)
+        : `Olá ${name}! ✅\n\nSeu pedido #${num} está pronto para retirada!\n\n📍 ${storeConfig?.store_address || 'Nossa loja'}`,
       delivered: `Olá ${name}! 🎉\n\nSeu pedido #${num} foi entregue! Obrigado pela preferência!`,
       cancelled: `Olá ${name}.\n\nSeu pedido #${num} foi cancelado.`,
     }

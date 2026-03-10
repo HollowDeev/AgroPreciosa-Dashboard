@@ -43,8 +43,8 @@ async function getOffersData() {
     .eq('is_active', true)
     .order('name')
 
-  // URL da loja (pode vir de variável de ambiente ou config)
-  const storeUrl = process.env.NEXT_PUBLIC_STORE_URL || 'http://localhost:3001'
+  // URL da loja — defina NEXT_PUBLIC_STORE_URL no .env do Dashboard
+  const storeUrl = (process.env.NEXT_PUBLIC_STORE_URL || '').replace(/\/$/, '')
 
   // Formatar produtos com imagem primária
   const formattedProducts = (products || []).map(p => ({

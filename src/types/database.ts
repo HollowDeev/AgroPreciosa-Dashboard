@@ -72,9 +72,29 @@ export interface Product {
   updated_at: string
 }
 
+export interface ProductVariation {
+  id: string
+  product_id: string
+  group_name: string
+  name: string
+  description: string | null
+  cost_price: number
+  sale_price: number
+  stock_quantity: number
+  min_stock_alert: number
+  weight: number | null
+  sku: string | null
+  barcode: string | null
+  is_default: boolean
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface ProductWithDetails extends Product {
   category?: Category
   images?: ProductImage[]
+  variations?: ProductVariation[]
   primary_image?: string
   profit_margin_percent?: number
   profit_margin_value?: number
@@ -83,6 +103,7 @@ export interface ProductWithDetails extends Product {
 export interface ProductImage {
   id: string
   product_id: string
+  variation_id: string | null
   image_url: string
   is_primary: boolean
   display_order: number

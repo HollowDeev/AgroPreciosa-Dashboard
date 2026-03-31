@@ -27,7 +27,8 @@ import {
 import { Loader2, Upload, Camera, X, Package } from 'lucide-react'
 import { toast } from 'sonner'
 import { generateSlug, formatCurrency, calculateMargin } from '@/lib/utils'
-import { Category, Product, UNIT_LABELS } from '@/types/database'
+import { Category, Product, UNIT_LABELS, ProductWithDetails } from '@/types/database'
+import { ProductVariationsEditor } from './product-variations-editor'
 
 const productSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -84,7 +85,10 @@ export function ProductFormDialog({
   const supabase = createClient()
   const [isLoading, setIsLoading] = useState(false)
   const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(product?.slug ? null : null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  
+  // We represent the UI state as an array of VariationGroups
+  const [variationGroups, setVariationGroups] = useState<any[]>([])
 
   const {
     register,
@@ -120,6 +124,7 @@ export function ProductFormDialog({
   // Resetar formulário quando o produto mudar (ao abrir modal de edição)
   useEffect(() => {
     if (open) {
+      const p = product as ProductWithDetails | null
       reset({
         name: product?.name || '',
         description: product?.description || '',
@@ -138,7 +143,25 @@ export function ProductFormDialog({
         is_featured: product?.is_featured ?? false,
       })
       setImageFile(null)
-      setImagePreview(null)
+      setImagePreview(p?.primary_image || null)
+      
+      const grpMap = new Map<string, any>()
+      p?.variations?.forEach(v => {
+        const gName = (v as any).group_name || 'Opções'
+        if (!grpMap.has(gName)) {
+           grpMap.set(gName, { tempId: Date.now().toString() + Math.random(), name: gName, hasImage: false, options: [] })
+        }
+        const imgMatch = p?.images?.find(img => img.variation_id === v.id);
+        if (imgMatch) {
+           grpMap.get(gName).hasImage = true;
+        }
+        grpMap.get(gName).options.push({
+           ...v,
+           tempId: v.id,
+           imageUrl: imgMatch?.image_url || null
+        })
+      })
+      setVariationGroups(Array.from(grpMap.values()))
     }
   }, [open, product, reset])
 
@@ -168,14 +191,14 @@ export function ProductFormDialog({
     setIsLoading(true)
     try {
       const slug = generateSlug(data.name)
-      
+
       let imageUrl: string | null = null
-      
+
       // Upload da imagem se houver
       if (imageFile) {
         const fileExt = imageFile.name.split('.').pop()
         const fileName = `${slug}-${Date.now()}.${fileExt}`
-        
+
         const { error: uploadError, data: uploadData } = await supabase.storage
           .from('images')
           .upload(`products/${fileName}`, imageFile)
@@ -185,7 +208,7 @@ export function ProductFormDialog({
         const { data: { publicUrl } } = supabase.storage
           .from('images')
           .getPublicUrl(`products/${fileName}`)
-        
+
         imageUrl = publicUrl
       }
 
@@ -208,6 +231,8 @@ export function ProductFormDialog({
         is_featured: data.is_featured,
       }
 
+      let productId = product?.id
+
       if (product) {
         // Atualizar produto existente
         const { error } = await supabase
@@ -216,20 +241,6 @@ export function ProductFormDialog({
           .eq('id', product.id)
 
         if (error) throw error
-
-        // Atualizar imagem principal se houver nova
-        if (imageUrl) {
-          await supabase
-            .from('product_images')
-            .upsert({
-              product_id: product.id,
-              image_url: imageUrl,
-              is_primary: true,
-              display_order: 0,
-            })
-        }
-
-        toast.success('Produto atualizado com sucesso!')
       } else {
         // Criar novo produto
         const { data: newProduct, error } = await supabase
@@ -239,21 +250,81 @@ export function ProductFormDialog({
           .single()
 
         if (error) throw error
+        if (newProduct) productId = newProduct.id
+      }
 
-        // Adicionar imagem se houver
-        if (imageUrl && newProduct) {
-          await supabase
-            .from('product_images')
-            .insert({
-              product_id: newProduct.id,
-              image_url: imageUrl,
-              is_primary: true,
-              display_order: 0,
-            })
+      // Atualizar imagem principal se houver nova
+      if (imageUrl && productId) {
+         await supabase.from('product_images').delete().eq('product_id', productId).is('variation_id', null)
+         await supabase.from('product_images').insert({ product_id: productId, image_url: imageUrl, is_primary: true, display_order: 0 })
+      }
+
+      // --- Variações ---
+      if (productId) {
+        // Flatten the groups back into a single array for saving
+        const variations = variationGroups.flatMap(g => g.options.map((o: any) => ({ ...o, group_name: g.name })))
+        
+        const existingIds = variations.map(v => v.id).filter(Boolean)
+        if (existingIds.length > 0) {
+          await supabase.from('product_variations').delete().eq('product_id', productId).not('id', 'in', existingIds)
+        } else {
+          await supabase.from('product_variations').delete().eq('product_id', productId)
         }
 
-        toast.success('Produto criado com sucesso!')
+        for (const v of variations) {
+          let varImageUrl = v.is_default ? null : v.imageUrl
+          if (!v.is_default && v.imageFile) {
+            const ext = v.imageFile.name.split('.').pop()
+            const fName = `var-${slug}-${Date.now()}.${ext}`
+            const { error: upErr } = await supabase.storage.from('images').upload(`products/${fName}`, v.imageFile)
+            if (!upErr) {
+              const { data: { publicUrl } } = supabase.storage.from('images').getPublicUrl(`products/${fName}`)
+              varImageUrl = publicUrl
+            }
+          }
+
+          const vData = {
+            product_id: productId,
+            group_name: v.group_name || 'Opções',
+            name: v.name,
+            cost_price: v.cost_price,
+            sale_price: v.sale_price,
+            stock_quantity: v.stock_quantity,
+            min_stock_alert: v.min_stock_alert,
+            sku: v.sku || null,
+            is_default: v.is_default || false,
+            is_active: v.is_active,
+          }
+          
+          if (vData.is_default) {
+            vData.cost_price = 0;
+            vData.sale_price = 0;
+          }
+
+          let varId = v.id
+          if (v.id) {
+            await supabase.from('product_variations').update(vData).eq('id', v.id)
+          } else {
+            const { data: newV } = await supabase.from('product_variations').insert(vData).select().single()
+            if (newV) varId = newV.id
+          }
+
+          if (varImageUrl && varId) {
+            await supabase.from('product_images').delete().eq('product_id', productId).eq('variation_id', varId)
+            await supabase.from('product_images').insert({
+              product_id: productId,
+              variation_id: varId,
+              image_url: varImageUrl,
+              is_primary: false,
+              display_order: 1
+            })
+          } else if (v.is_default && varId) {
+            await supabase.from('product_images').delete().eq('product_id', productId).eq('variation_id', varId)
+          }
+        }
       }
+
+      toast.success(product ? 'Produto atualizado com sucesso!' : 'Produto criado com sucesso!')
 
       reset()
       setImageFile(null)
@@ -270,10 +341,10 @@ export function ProductFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] md:max-w-7xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {product ? 'Editar Produto' : 'Novo Produto'}
+             {product ? 'Editar Produto' : 'Novo Produto'}
           </DialogTitle>
         </DialogHeader>
 
@@ -452,10 +523,9 @@ export function ProductFormDialog({
             </div>
             <div className="space-y-2">
               <Label>Margem de Lucro</Label>
-              <div className={`p-2 rounded-md text-center font-medium ${
-                margin > 0 ? 'bg-green-100 text-green-700' : 
-                margin < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100'
-              }`}>
+              <div className={`p-2 rounded-md text-center font-medium ${margin > 0 ? 'bg-green-100 text-green-700' :
+                  margin < 0 ? 'bg-red-100 text-red-700' : 'bg-gray-100'
+                }`}>
                 {margin.toFixed(1)}%
                 <span className="text-xs block">
                   {formatCurrency(salePrice - costPrice)}
@@ -532,6 +602,16 @@ export function ProductFormDialog({
               />
               <Label htmlFor="is_featured">Produto em Destaque</Label>
             </div>
+          </div>
+
+          {/* Variações */}
+          <div className="pt-4 border-t">
+            <ProductVariationsEditor 
+              groups={variationGroups} 
+              onChange={setVariationGroups} 
+              baseSalePrice={watch('sale_price') || 0}
+              baseCostPrice={watch('cost_price') || 0}
+            />
           </div>
 
           {/* Botões */}

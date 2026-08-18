@@ -310,7 +310,7 @@ export interface DailySalesSummary {
 
 // Status labels em português
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: 'Pendente',
+  pending: 'Em aprovação',
   preparing: 'Em Preparação',
   sent: 'Enviado',
   ready_pickup: 'Pronto para Retirada',
@@ -319,7 +319,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 }
 
 export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
-  pending: 'bg-yellow-100 text-yellow-800',
+  pending: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300',
   preparing: 'bg-blue-100 text-blue-800',
   sent: 'bg-purple-100 text-purple-800',
   ready_pickup: 'bg-green-100 text-green-800',

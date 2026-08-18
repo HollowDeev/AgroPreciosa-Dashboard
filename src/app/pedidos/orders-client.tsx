@@ -60,7 +60,7 @@ interface OrdersClientProps {
 }
 
 const STATUS_OPTIONS: { value: OrderStatus; label: string }[] = [
-  { value: 'pending', label: 'Aguardando' },
+  { value: 'pending', label: 'Em aprovação' },
   { value: 'preparing', label: 'Em Preparação' },
   { value: 'sent', label: 'Enviado' },
   { value: 'ready_pickup', label: 'Pronto Retirada' },
@@ -75,7 +75,8 @@ const STATUS_GROUPS: {
   icon: React.ElementType
   color: string
 }[] = [
-    { key: ['pending', 'preparing'], label: 'Em Preparação', icon: Flame, color: 'text-blue-600' },
+    { key: ['pending'], label: 'Em Aprovação', icon: Clock, color: 'text-amber-600' },
+    { key: ['preparing'], label: 'Em Preparação', icon: Flame, color: 'text-blue-600' },
     { key: ['sent'], label: 'Enviados', icon: Send, color: 'text-purple-600' },
     { key: ['ready_pickup'], label: 'Pronto Retirada', icon: CheckCircle, color: 'text-green-600' },
     { key: ['delivered'], label: 'Entregues', icon: CheckCircle, color: 'text-gray-500' },
@@ -92,7 +93,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
   const supabase = createClient()
   const [orders, setOrders] = useState(initialOrders)
   const [deliveryFilter, setDeliveryFilter] = useState<'all' | 'delivery' | 'pickup'>('all')
-  const [openGroups, setOpenGroups] = useState<string[]>(['Em Preparação', 'Enviados', 'Pronto Retirada'])
+  const [openGroups, setOpenGroups] = useState<string[]>(['Em Aprovação', 'Em Preparação', 'Enviados', 'Pronto Retirada'])
   const [selectedOrder, setSelectedOrder] = useState<OrderWithDetails | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
@@ -176,14 +177,14 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
     const msgs: Partial<Record<OrderStatus, string>> = {
       preparing: storeConfig?.whatsapp_message_preparing
         ? applyMessagePlaceholders(storeConfig.whatsapp_message_preparing, name, num)
-        : `Olá ${name}! 👋\n\nSeu pedido #${num} está sendo preparado com carinho! 🛍️`,
+        : `Olá ${name}!\n\nSeu pedido #${num} está sendo preparado.`,
       sent: storeConfig?.whatsapp_message_sent
         ? applyMessagePlaceholders(storeConfig.whatsapp_message_sent, name, num)
-        : `Olá ${name}! 🚚\n\nSeu pedido #${num} saiu para entrega!`,
+        : `Olá ${name}!\n\nSeu pedido #${num} saiu para entrega!`,
       ready_pickup: storeConfig?.whatsapp_message_ready
         ? applyMessagePlaceholders(storeConfig.whatsapp_message_ready, name, num)
-        : `Olá ${name}! ✅\n\nSeu pedido #${num} está pronto para retirada!\n\n📍 ${storeConfig?.store_address || 'Nossa loja'}`,
-      delivered: `Olá ${name}! 🎉\n\nSeu pedido #${num} foi entregue! Obrigado pela preferência!`,
+        : `Olá ${name}!\n\nSeu pedido #${num} está pronto para retirada!\n\nLocal: ${storeConfig?.store_address || 'Nossa loja'}`,
+      delivered: `Olá ${name}!\n\nSeu pedido #${num} foi entregue! Obrigado pela preferência!`,
       cancelled: `Olá ${name}.\n\nSeu pedido #${num} foi cancelado.`,
     }
     return msgs[order.status] || `Olá ${name}! Seu pedido #${num} foi atualizado.`
@@ -262,6 +263,19 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
           <span className="text-xs text-muted-foreground">Total</span>
           <span className="font-bold text-sm">{formatCurrency(order.total)}</span>
         </div>
+
+        {/* Botão de aprovação direta se estiver Em Aprovação */}
+        {order.status === 'pending' && (
+          <div className="px-3 pt-2">
+            <Button
+              size="sm"
+              className="w-full h-8 text-xs gap-1.5 bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm"
+              onClick={() => updateOrderStatus(order.id, 'preparing')}
+            >
+              <CheckCircle className="h-3.5 w-3.5" /> Aprovar Pedido
+            </Button>
+          </div>
+        )}
 
         {/* Select de status */}
         <div className="px-3 py-2 border-t border-border/50">
@@ -370,6 +384,19 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
                 {formatDateTime(order.created_at)}
               </DialogDescription>
             </DialogHeader>
+
+            {order.status === 'pending' && (
+              <div className="mt-3">
+                <Button
+                  size="default"
+                  className="w-full gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm"
+                  onClick={() => updateOrderStatus(order.id, 'preparing')}
+                >
+                  <CheckCircle className="h-4 w-4" /> Aprovar Pedido
+                </Button>
+              </div>
+            )}
+
             <div className="mt-3">
               <Select
                 value={order.status}

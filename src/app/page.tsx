@@ -170,7 +170,7 @@ export default async function DashboardPage() {
                       <div className="text-right">
                         <p className="font-medium">{formatCurrency(order.total)}</p>
                         <p className="text-xs text-muted-foreground">
-                          {order.status === 'pending' ? 'Pendente' : 'Em Preparação'}
+                          {order.status === 'pending' ? 'Em aprovação' : 'Em Preparação'}
                         </p>
                       </div>
                     </Link>

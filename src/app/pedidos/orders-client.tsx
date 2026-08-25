@@ -43,7 +43,7 @@ import {
   Printer,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatCurrency, formatDateTime, generateWhatsAppLink } from '@/lib/utils'
+import { formatCurrency, formatDateTime, generateWhatsAppLink, openWhatsApp as launchWhatsApp } from '@/lib/utils'
 import { printThermalReceipt } from '@/lib/thermal-print'
 import {
   OrderWithDetails,
@@ -192,7 +192,7 @@ export function OrdersClient({ initialOrders, storeConfig }: OrdersClientProps) 
 
   const openWhatsApp = (order: OrderWithDetails) => {
     if (!order.customer?.phone) { toast.error('Cliente sem telefone cadastrado'); return }
-    window.open(generateWhatsAppLink(order.customer.phone, getWhatsAppMessage(order)), '_blank')
+    launchWhatsApp(generateWhatsAppLink(order.customer.phone, getWhatsAppMessage(order)))
   }
 
   const openDetails = (order: OrderWithDetails) => {

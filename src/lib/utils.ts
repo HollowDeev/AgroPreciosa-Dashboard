@@ -53,7 +53,27 @@ export function generateSlug(text: string): string {
 }
 
 export function generateWhatsAppLink(phone: string, message: string): string {
-  const cleanedPhone = phone.replace(/\D/g, '')
+  let cleanedPhone = (phone || '').replace(/\D/g, '')
+  if (cleanedPhone.length === 10 || cleanedPhone.length === 11) {
+    cleanedPhone = `55${cleanedPhone}`
+  }
   const encodedMessage = encodeURIComponent(message)
-  return `https://wa.me/${cleanedPhone}?text=${encodedMessage}`
+  return `https://api.whatsapp.com/send?phone=${cleanedPhone}&text=${encodedMessage}`
+}
+
+export function openWhatsApp(url: string) {
+  if (!url || typeof window === 'undefined') return
+
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent || ''
+  )
+
+  if (isMobile) {
+    window.location.href = url
+  } else {
+    const newWin = window.open(url, '_blank')
+    if (!newWin || newWin.closed || typeof newWin.closed === 'undefined') {
+      window.location.href = url
+    }
+  }
 }

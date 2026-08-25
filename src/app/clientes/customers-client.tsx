@@ -44,7 +44,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatCurrency, formatPhone, generateWhatsAppLink } from '@/lib/utils'
+import { formatCurrency, formatPhone, generateWhatsAppLink, openWhatsApp } from '@/lib/utils'
 import { Customer } from '@/types/database'
 
 const customerSchema = z.object({
@@ -330,9 +330,8 @@ export function CustomersClient({ initialCustomers }: CustomersClientProps) {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem 
-                          onClick={() => window.open(
-                            generateWhatsAppLink(customer.phone, `Olá ${customer.name}!`),
-                            '_blank'
+                          onClick={() => openWhatsApp(
+                            generateWhatsAppLink(customer.phone, `Olá ${customer.name}!`)
                           )}
                         >
                           <MessageCircle className="mr-2 h-4 w-4" />
